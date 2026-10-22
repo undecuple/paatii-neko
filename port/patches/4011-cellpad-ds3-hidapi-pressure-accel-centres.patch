@@ -1,0 +1,253 @@
+cellPad: DualShock 3 through SDL3's HIDAPI PS3 drivers: analog button pressure and the main driver's accelerometer centres.
+From the Killzone 3 port's 4010 (commits 087439a5, 92419637).
+What: SDL_JOYSTICK_HIDAPI_PS3 and SDL_JOYSTICK_HIDAPI_PS3_SIXAXIS_DRIVER are set to 1 at SDL_HINT_NORMAL priority (an
+environment variable of the same name wins; a [pad] line says which value took effect). A PS3-type pad whose joystick
+has all 16 axes gets its ten button pressures from joystick axes 6-15 (cross, circle, square, triangle, L1, R1, up,
+down, left, right; (v + 32768) / 257) instead of the digital 0/255 (PadHostState.press_real; cellPadGetData then only
+raises a 0 pressure under a set digital bit). The SIXAXIS words of a PS3-type pad are shifted onto SDL's main PS3
+driver centres (X 513, Y 511, Z 511; a flat pad reads Y 398) after pad_sdl_sensors.
+Why: both SDL PS3 drivers are off by default on Windows and Linux, so a DS3 reached the game only as a generic pad
+with 0/255 pressures. Not run on a real DS3 yet (ASSUMPTION marks in pad_host.h). Sorted after 4010 and before 7016.
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -68,6 +68,7 @@
+ 
+ #if PAD_BACKEND_SDL
+ typedef struct PadSdlGamepad PadSdlGamepad;   /* SDL_Gamepad */
++typedef struct PadSdlJoystick PadSdlJoystick; /* SDL_Joystick */
+ typedef struct PadSdlMutex   PadSdlMutex;     /* SDL_Mutex */
+ static PadSdlGamepad* s_sdl_controllers[PAD_MAX_HOST_PORTS];
+ static int s_sdl_inited = 0;
+@@ -605,6 +606,7 @@
+ #define PAD_SDL_FUNCS(X) \
+     X(void, SDL_SetMainReady, (void)) \
+     X(bool, SDL_SetHint, (const char*, const char*)) \
++    X(bool, SDL_SetHintWithPriority, (const char*, const char*, int)) \
+     X(bool, SDL_InitSubSystem, (uint32_t)) \
+     X(const char*, SDL_GetError, (void)) \
+     X(int, SDL_GetVersion, (void)) \
+@@ -625,6 +627,9 @@
+     X(bool, SDL_GamepadHasSensor, (PadSdlGamepad*, int)) \
+     X(bool, SDL_SetGamepadSensorEnabled, (PadSdlGamepad*, int, bool)) \
+     X(bool, SDL_GetGamepadSensorData, (PadSdlGamepad*, int, float*, int)) \
++    X(PadSdlJoystick*, SDL_GetGamepadJoystick, (PadSdlGamepad*)) \
++    X(int, SDL_GetNumJoystickAxes, (PadSdlJoystick*)) \
++    X(int16_t, SDL_GetJoystickAxis, (PadSdlJoystick*, int)) \
+     X(PadSdlMutex*, SDL_CreateMutex, (void)) \
+     X(void, SDL_LockMutex, (PadSdlMutex*)) \
+     X(void, SDL_UnlockMutex, (PadSdlMutex*))
+@@ -645,6 +650,8 @@
+                "pad_host.h axis values follow SDL3");
+ _Static_assert(SDL_GAMEPAD_TYPE_PS5 == 6 && SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO == 7
+                && SDL_GAMEPAD_BUTTON_LABEL_TRIANGLE == 8, "pad_host.h type and label values follow SDL3");
++_Static_assert((int)SDL_HINT_NORMAL == PAD_SDL_HINT_NORMAL && (int)SDL_GAMEPAD_TYPE_PS3 == PAD_SDL_TYPE_PS3,
++               "pad_host.h hint priority and PS3 type follow SDL3");
+ _Static_assert(SDL_SENSOR_ACCEL == PAD_SDL_SENSOR_ACCEL && SDL_SENSOR_GYRO == PAD_SDL_SENSOR_GYRO
+                && SDL_INIT_GAMEPAD == PAD_SDL_INIT_GAMEPAD, "pad_host.h sensor and init values follow SDL3");
+ #endif
+@@ -661,6 +668,7 @@
+ static unsigned short     s_rumble_lo[PAD_MAX_HOST_PORTS], s_rumble_hi[PAD_MAX_HOST_PORTS];
+ static unsigned long long s_rumble_ms[PAD_MAX_HOST_PORTS];
+ static unsigned char      s_sdl_sensors[PAD_MAX_HOST_PORTS];   /* bit 0 accel, bit 1 gyro, enabled */
++static unsigned char      s_port_ps3_press[PAD_MAX_HOST_PORTS]; /* 1 = PS3-type pad with the 10 pressure axes */
+ 
+ /* Turn on the pad's accelerometer and gyro (SDL leaves them off) and log what the port is. */
+ static void pad_sdl_open_log(int p, PadSdlGamepad* gc)
+@@ -679,6 +687,14 @@
+            pad_sdl_label_name(PSDL(SDL_GetGamepadButtonLabel)(gc, PAD_SDL_X)),
+            pad_sdl_label_name(PSDL(SDL_GetGamepadButtonLabel)(gc, PAD_SDL_Y)),
+            s == 3 ? "accel+gyro" : s == 1 ? "accel" : s == 2 ? "gyro" : "no");
++    {
++        PadSdlJoystick* js = PSDL(SDL_GetGamepadJoystick)(gc);
++        int na = js ? PSDL(SDL_GetNumJoystickAxes)(js) : 0;
++        s_port_ps3_press[p] = (unsigned char)pad_sdl_has_pressure(PSDL(SDL_GetGamepadType)(gc), na);
++        if (PSDL(SDL_GetGamepadType)(gc) == PAD_SDL_TYPE_PS3)
++            printf("[pad] port %d: DualShock 3 joystick has %d axes: button pressure %s\n", p, na,
++                   s_port_ps3_press[p] ? "analog (axes 6-15)" : "digital 0/255 (the pressure axes are missing)");
++    }
+ }
+ 
+ static void pad_sdl_sync(unsigned long long now)
+@@ -732,6 +748,15 @@
+             int ha = (s_sdl_sensors[p] & 1) && PSDL(SDL_GetGamepadSensorData)(gc, PAD_SDL_SENSOR_ACCEL, acc, 3);
+             int hg = (s_sdl_sensors[p] & 2) && PSDL(SDL_GetGamepadSensorData)(gc, PAD_SDL_SENSOR_GYRO, gyr, 3);
+             pad_sdl_sensors(ha ? acc : NULL, hg ? gyr : NULL, &s_host_state[p]);
++            if (PSDL(SDL_GetGamepadType)(gc) == PAD_SDL_TYPE_PS3) pad_sdl_sensors_ds3_centre(&s_host_state[p]);
++        }
++        /* DualShock 3 analog button pressures (pad_host.h pad_sdl_press); other pads keep the digital 0/255. */
++        if (s_port_ps3_press[p]) {
++            PadSdlJoystick* js = PSDL(SDL_GetGamepadJoystick)(gc);
++            short ax[PAD_SDL_PS3_PRESS_COUNT];
++            for (int k = 0; k < PAD_SDL_PS3_PRESS_COUNT; k++)
++                ax[k] = js ? PSDL(SDL_GetJoystickAxis)(js, PAD_SDL_PS3_PRESS_FIRST + k) : -32768;
++            pad_sdl_press(ax, &s_host_state[p]);
+         }
+         if ((s_rumble_lo[p] || s_rumble_hi[p]) && now - s_rumble_ms[p] >= PAD_SDL_REFRESH_MS) {
+             PSDL(SDL_RumbleGamepad)(gc, s_rumble_lo[p], s_rumble_hi[p], PAD_SDL_RUMBLE_MS);
+@@ -796,6 +821,15 @@
+         PSDL(SDL_SetHint)("SDL_JOYSTICK_HIDAPI_PS5", "1");
+         PSDL(SDL_SetHint)("SDL_JOYSTICK_HIDAPI_SWITCH", "1");
+         PSDL(SDL_SetHint)("SDL_JOYSTICK_HIDAPI_XBOX", "1");
++        /* DualShock 3 drivers: normal priority, so an environment variable decides; the line says which value took
++         * effect. */
++        for (size_t h = 0; h < sizeof pad_sdl_soft_hints / sizeof pad_sdl_soft_hints[0]; h++) {
++            char line[240];
++            const char* env = getenv(pad_sdl_soft_hints[h][0]);
++            pad_sdl_soft_hint_text(line, sizeof line, pad_sdl_soft_hints[h][0], pad_sdl_soft_hints[h][1], env);
++            if (!env) PSDL(SDL_SetHintWithPriority)(pad_sdl_soft_hints[h][0], pad_sdl_soft_hints[h][1], PAD_SDL_HINT_NORMAL);
++            printf("[pad] %s\n", line);
++        }
+         /* ASSUMPTION (not run on a real pad yet): RawInput's message window belongs to the thread that initialised
+          * SDL, and the pad is polled from game threads; without it, Xbox pads go through SDL's XInput driver. */
+         PSDL(SDL_SetHint)("SDL_JOYSTICK_RAWINPUT", "0");
+@@ -1429,8 +1463,8 @@
+             { CELL_PAD_BTN_OFFSET_DIGITAL2, 0x01, CELL_PAD_BTN_OFFSET_PRESS_L2 },
+             { CELL_PAD_BTN_OFFSET_DIGITAL2, 0x02, CELL_PAD_BTN_OFFSET_PRESS_R2 } };
+         for (unsigned k = 0; k < sizeof pm / sizeof pm[0]; k++)
+-            if ((data->button[pm[k].word] & pm[k].bit) && data->button[pm[k].off] < 255)
+-                data->button[pm[k].off] = 255;
++            if ((data->button[pm[k].word] & pm[k].bit) && data->button[pm[k].off] < (hs->press_real ? 1 : 255))
++                data->button[pm[k].off] = 255;   /* 4010: a pad's own analog pressure is kept, only a 0 is raised */
+     }
+ 
+     /* Sensor data (only meaningful if SENSOR_ON) */
+diff --git a/libs/input/pad_host.h b/libs/input/pad_host.h
+--- a/libs/input/pad_host.h
++++ b/libs/input/pad_host.h
+@@ -10,6 +10,7 @@
+ #ifndef PS3RECOMP_PAD_HOST_H
+ #define PS3RECOMP_PAD_HOST_H
+ 
++#include <stdio.h>
+ #include <string.h>
+ #include "cellPad.h"
+ 
+@@ -33,6 +34,7 @@
+     u8   press_square;
+     u8   press_l1;
+     u8   press_r1;
++    u8   press_real;   /* 4010: 1 = the ten press_* bytes above are the pad's own analog pressures (DS3), not 0/255 */
+     /* 4010: SIXAXIS words as a DS3 reports them (0-1023), valid when has_sensor (pad_sdl_sensors) */
+     int  has_sensor;
+     u16  sensor_x, sensor_y, sensor_z, sensor_g;
+@@ -169,6 +171,25 @@
+     hs->sensor_g = gyro  ? pad_sensor_word(512.0f - 123.0f * gyro[1] * deg / 90.0f) : 512;
+ }
+ 
++/* DualShock 3 centre. SDL's main PS3 driver (SDL_hidapi_ps3.c ScaleAccel :343-348, use :514-516 and :1371-1373,
++ * release-3.4.x): SDL x = (b41/42 - 511)/113 g, y = -(b45/46 - 511)/113 g, z = -(b43/44 - 511)/113 g, in the SDL standard frame
++ * (y up: a flat pad reads y = +g, so Y = 511 - 113 = 398). RPCS3's DS3 handler (ds3_pad_handler.cpp:430-437, master) reads the words as
++ * x = b41, z = b43, y = b45, gyro b47 (ds3_pad_handler.h:56-59) -> cellPad X/Y/Z/G, and flips raw X on a raw HID read (console
++ * X = 1024 - raw X, :433). With that flip the main driver's inverse is X = 513 - 113 x/g, Y = 511 - 113 y/g, Z = 511 - 113 z/g,
++ * which agrees with the sixaxis path (:350-353, :1028-1030: -(raw - 512)/113 g on every axis, = 512 - 113 a/g, a console-convention
++ * driver) to within 1 count; the DS4/DualSense mapping (RPCS3 ds4_pad_handler.cpp:890-902: -accel*113 + 512, SDL's PS4 accel is the
++ * same y-up frame) is 512 - 113 a/g too. So pad_sdl_sensors' 512 is right for DS4/DualSense and the sixaxis path; for a PS3-type
++ * pad this shifts the words onto the main driver's centres (a PS3-type pad cannot be told apart by driver here). ASSUMPTION: the X flip
++ * is RPCS3's reading of a raw HID report, not verified on a console; the 1-count centre is below the DS3's own offset spread.
++ * Call after pad_sdl_sensors; does nothing without accelerometer data (has_sensor with a DS3 means accel; it has no gyro). */
++static inline void pad_sdl_sensors_ds3_centre(PadHostState* hs)
++{
++    if (!hs->has_sensor) return;
++    hs->sensor_x = pad_sensor_word((float)hs->sensor_x + 1.0f);
++    hs->sensor_y = pad_sensor_word((float)hs->sensor_y - 1.0f);
++    hs->sensor_z = pad_sensor_word((float)hs->sensor_z - 1.0f);
++}
++
+ /* DS3 actuators: motor[SMALL] is on/off (0 or 1, any non-zero counts), motor[LARGE] is 0-255. SDL's low-frequency
+  * motor is the large one. */
+ static inline void pad_act_to_rumble(const u8 motor[CELL_PAD_ACTUATOR_MAX], unsigned short* low, unsigned short* high)
+@@ -197,4 +218,93 @@
+     return changed;
+ }
+ 
++/* A string from SDL or the environment for one log line: printable ASCII only, at most n-1 bytes, NULL -> "?". */
++static inline void pad_log_clean(char* dst, size_t n, const char* src)
++{
++    size_t i = 0;
++    if (!n) return;
++    if (!src) src = "?";
++    for (; src[i] && i + 1 < n; i++) dst[i] = (src[i] >= 0x20 && src[i] <= 0x7E) ? src[i] : '?';
++    dst[i] = 0;
++}
++
++#if defined(__GNUC__)
++#define PAD_HOST_UNUSED __attribute__((unused))
++#else
++#define PAD_HOST_UNUSED
++#endif
++/* DualShock 3 hints (ASSUMPTION: untested on a real DS3), set at SDL_HINT_NORMAL priority, NOT override: a
++ * player's environment variable of the same name wins (SDL_SetHintWithPriority refuses a lower priority than the
++ * environment's, SDL_hints.c), so "SDL_JOYSTICK_HIDAPI_PS3=0" turns the port's choice off. Both drivers are off by
++ * default on Windows (SDL_hidapi_ps3.c HIDAPI_DriverPS3_IsEnabled default_value = false for SDL_PLATFORM_WIN32; the
++ * sixaxis one: SDL_GetHintBoolean(SDL_HINT_JOYSTICK_HIDAPI_PS3_SIXAXIS_DRIVER, false), release-3.4.x). They only
++ * matter when a DS3 is attached and SDL can open it: under Proton with PROTON_ENABLE_HIDRAW the HIDAPI PS3 driver
++ * may now see a DS3; on Windows with DsHidMini in SXS mode (Sony's sixaxis.sys protocol) the sixaxis driver applies. */
++#define PAD_SDL_HINT_NORMAL 1     /* SDL_HintPriority SDL_HINT_NORMAL */
++static const char* const pad_sdl_soft_hints[][2] PAD_HOST_UNUSED = {
++    { "SDL_JOYSTICK_HIDAPI_PS3", "1" },
++    { "SDL_JOYSTICK_HIDAPI_PS3_SIXAXIS_DRIVER", "1" },
++};
++/* The text for the [pad] hint line of a soft hint: which value takes effect. env = getenv(name) or NULL. */
++static inline void pad_sdl_soft_hint_text(char* dst, size_t n, const char* name, const char* ours, const char* env)
++{
++    char v[64];
++    if (!n) return;
++    if (env) {
++        pad_log_clean(v, sizeof v, env);
++        snprintf(dst, n, "SDL hint %s=%s from the environment (port default %s not used)", name, v, ours);
++    } else {
++        snprintf(dst, n, "SDL hint %s=%s (port default; the environment can change it)", name, ours);
++    }
++}
++
++/* DualShock 3 analog button pressures. SDL's PS3 HIDAPI drivers add 10 joystick axes after the 6 standard ones when
++ * the driver has_analog_buttons (SDL_hidapi_ps3.c:281-283 main driver, :741-743 sixaxis driver; has_analog_buttons
++ * = true at :177 and, for the third-party driver, :670-672). The report loops send them "in the order they appear in
++ * the button enumeration", skipping buttons without a pressure, starting at axis_index = 6 (:478-509 main driver,
++ * :858-889 sixaxis driver): SOUTH(cross) 6, EAST(circle) 7, WEST(square) 8, NORTH(triangle) 9, LEFT_SHOULDER(L1) 10,
++ * RIGHT_SHOULDER(R1) 11, DPAD_UP 12, DPAD_DOWN 13, DPAD_LEFT 14, DPAD_RIGHT 15. Value: ((int)byte * 257) - 32768
++ * (:505, :885) = -32768 (0) .. 32767 (255). L2/R2 are the standard trigger axes (:464-467) already in pad_sdl_map. */
++#define PAD_SDL_TYPE_PS3        4
++#define PAD_SDL_PS3_PRESS_FIRST 6
++#define PAD_SDL_PS3_PRESS_COUNT 10
++#define PAD_SDL_PS3_AXES        (PAD_SDL_PS3_PRESS_FIRST + PAD_SDL_PS3_PRESS_COUNT)
++enum { PAD_PS3P_CROSS, PAD_PS3P_CIRCLE, PAD_PS3P_SQUARE, PAD_PS3P_TRIANGLE, PAD_PS3P_L1, PAD_PS3P_R1,
++       PAD_PS3P_UP, PAD_PS3P_DOWN, PAD_PS3P_LEFT, PAD_PS3P_RIGHT };
++
++/* 1 = read the pressure axes: the pad's SDL type is PS3 and its joystick has all 16 axes. */
++static inline int pad_sdl_has_pressure(int sdl_type, int num_axes)
++{
++    return sdl_type == PAD_SDL_TYPE_PS3 && num_axes >= PAD_SDL_PS3_AXES;
++}
++static inline u8 pad_sdl_press_u8(int raw)   /* -32768..32767 -> 0..255, clamped */
++{
++    int v = (raw + 32768) / 257;
++    return (u8)(v < 0 ? 0 : v > 255 ? 255 : v);
++}
++/* Fill the ten press_* bytes from the joystick axes 6..15 (ax[0] = axis 6) after pad_sdl_map; sets press_real. A
++ * button whose digital bit is set but whose pressure reads 0 keeps 255 (ASSUMPTION: a driver or axis that never
++ * reports a pressure must not make a pressed button read as released); a pressure with no digital bit is kept. */
++static inline void pad_sdl_press(const short ax[PAD_SDL_PS3_PRESS_COUNT], PadHostState* hs)
++{
++    static const struct { u8 i; u16 bit; } m[PAD_SDL_PS3_PRESS_COUNT] = {
++        { PAD_PS3P_CROSS, CELL_PAD_CTRL_CROSS },   { PAD_PS3P_CIRCLE, CELL_PAD_CTRL_CIRCLE },
++        { PAD_PS3P_SQUARE, CELL_PAD_CTRL_SQUARE }, { PAD_PS3P_TRIANGLE, CELL_PAD_CTRL_TRIANGLE },
++        { PAD_PS3P_L1, CELL_PAD_CTRL_L1 },         { PAD_PS3P_R1, CELL_PAD_CTRL_R1 },
++        { PAD_PS3P_UP, CELL_PAD_CTRL_UP },         { PAD_PS3P_DOWN, CELL_PAD_CTRL_DOWN },
++        { PAD_PS3P_LEFT, CELL_PAD_CTRL_LEFT },     { PAD_PS3P_RIGHT, CELL_PAD_CTRL_RIGHT },
++    };
++    u8 p[PAD_SDL_PS3_PRESS_COUNT];
++    for (int k = 0; k < PAD_SDL_PS3_PRESS_COUNT; k++) {
++        p[m[k].i] = pad_sdl_press_u8(ax[m[k].i]);
++        if (!p[m[k].i] && (hs->buttons & m[k].bit)) p[m[k].i] = 255;
++    }
++    hs->press_cross = p[PAD_PS3P_CROSS];   hs->press_circle = p[PAD_PS3P_CIRCLE];
++    hs->press_square = p[PAD_PS3P_SQUARE]; hs->press_triangle = p[PAD_PS3P_TRIANGLE];
++    hs->press_l1 = p[PAD_PS3P_L1];         hs->press_r1 = p[PAD_PS3P_R1];
++    hs->press_up = p[PAD_PS3P_UP];         hs->press_down = p[PAD_PS3P_DOWN];
++    hs->press_left = p[PAD_PS3P_LEFT];     hs->press_right = p[PAD_PS3P_RIGHT];
++    hs->press_real = 1;
++}
++
+ #endif

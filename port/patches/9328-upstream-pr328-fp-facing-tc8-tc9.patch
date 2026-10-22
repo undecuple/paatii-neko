@@ -1,0 +1,146 @@
+Credit: ps3recomp PR #328 by @erikomis (MIT), "fp decompiler: read FACING, TC8 and TC9", https://github.com/sp00nznet/ps3recomp/pull/328.
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+index 0f410221..63329bba 100644
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -1287,6 +1287,7 @@ static const char* const kEngFixedVS =
+ "    float4 fog:FOG;\n"
+ "    float4 t0:TEXCOORD0; float4 t1:TEXCOORD1; float4 t2:TEXCOORD2; float4 t3:TEXCOORD3;\n"
+ "    float4 t4:TEXCOORD4; float4 t5:TEXCOORD5; float4 t6:TEXCOORD6; float4 t7:TEXCOORD7;\n"
++"    float4 t8:TEXCOORD8; float4 t9:TEXCOORD9;\n"
+ "};\n"
+ "cbuffer VPConst : register(b0) {\n"
+ "    float4 vp_c[512];\n"
+@@ -1304,6 +1305,7 @@ static const char* const kEngFixedVS =
+ "    Out.col0 = input.a3; Out.col1 = float4(0,0,0,1); Out.fog = (float4)0;\n"
+ "    Out.t0 = input.a8; Out.t1 = (float4)0; Out.t2 = (float4)0; Out.t3 = (float4)0;\n"
+ "    Out.t4 = (float4)0; Out.t5 = (float4)0; Out.t6 = (float4)0; Out.t7 = (float4)0;\n"
++"    Out.t8 = (float4)0; Out.t9 = (float4)0;\n"
+ "    return Out;\n"
+ "}\n";
+ 
+diff --git a/libs/video/rsx_fp_decompiler.c b/libs/video/rsx_fp_decompiler.c
+index 41da6fcc..e2108d12 100644
+--- a/libs/video/rsx_fp_decompiler.c
++++ b/libs/video/rsx_fp_decompiler.c
+@@ -377,9 +377,16 @@ static const char* input_expr(u32 input_src)
+     case 0x1: return "saturate(input.col0)"; /* COL0 */
+     case 0x2: return "saturate(input.col1)"; /* COL1 */
+     case 0x3: return "input.fog";      /* FOGC */
++    case 0xC: return "input.tc8";      /* TC8 (VP o15) */
++    case 0xD: return "input.tc9";      /* TC9 (VP o6) */
++    /* FACING: +1 on a front face, -1 on a back face (RPCS3's `ssa`). Two-sided
++     * materials multiply the interpolated normal by it; read as zero, inFAMOUS
++     * 2's foliage and character heads normalised a null vector into the
++     * G-buffer and lit black. */
++    case 0xE: return "(input._rsx_front ? float4(1,1,1,1) : float4(-1,-1,-1,-1))";
+     default:
+         if (input_src >= 0x4 && input_src <= 0xB) return tc[input_src - 0x4]; /* TC0..7 */
+-        return "float4(0,0,0,0)";      /* TC8/TC9/FACING not plumbed */
++        return "float4(0,0,0,0)";
+     }
+ }
+ 
+@@ -1226,8 +1233,15 @@ static int rsx_fp_decompile_internal(
+         "    float4 position : SV_POSITION; float4 col0 : COLOR0; float4 col1 : COLOR1;\n"
+         "    float4 fog : FOG;\n"
+         "    float4 tc0:TEXCOORD0; float4 tc1:TEXCOORD1; float4 tc2:TEXCOORD2; float4 tc3:TEXCOORD3;\n"
+-        "    float4 tc4:TEXCOORD4; float4 tc5:TEXCOORD5; float4 tc6:TEXCOORD6; float4 tc7:TEXCOORD7;\n"
+-        "};\n");
++        "    float4 tc4:TEXCOORD4; float4 tc5:TEXCOORD5; float4 tc6:TEXCOORD6; float4 tc7:TEXCOORD7;\n");
++    /* TC8/TC9 and the face flag only where the body reads them, so every other
++     * program stays byte-identical (and keeps its cached pipeline). TC8 and
++     * TC9 follow TC7 so the earlier interpolants keep their locations. */
++    if (strstr(o.p, "input.tc8") || strstr(o.p, "input.tc9"))
++        out_puts(&p, "    float4 tc8:TEXCOORD8; float4 tc9:TEXCOORD9;\n");
++    if (strstr(o.p, "input._rsx_front"))
++        out_puts(&p, "    bool _rsx_front : SV_IsFrontFace;\n");
++    out_puts(&p, "};\n");
+     /* Texture bank. With no cube units (the default) emit the exact legacy
+      * array declaration so 2D-only programs are byte-identical. When any unit
+      * is a cubemap, declare each unit individually at its t-register so the
+diff --git a/libs/video/rsx_vp_decompiler.c b/libs/video/rsx_vp_decompiler.c
+index 8ff83c09..3c3f350e 100644
+--- a/libs/video/rsx_vp_decompiler.c
++++ b/libs/video/rsx_vp_decompiler.c
+@@ -635,6 +635,7 @@ static int rsx_vp_decompile_impl(
+         "    float4 fog:FOG;\n"
+         "    float4 t0:TEXCOORD0; float4 t1:TEXCOORD1; float4 t2:TEXCOORD2; float4 t3:TEXCOORD3;\n"
+         "    float4 t4:TEXCOORD4; float4 t5:TEXCOORD5; float4 t6:TEXCOORD6; float4 t7:TEXCOORD7;\n"
++        "    float4 t8:TEXCOORD8; float4 t9:TEXCOORD9;\n"
+         "};\n"
+         /* b0: 512 vec4 transform constants + the RSX viewport transform,
+          * pre-mapped by the harness to D3D clip space:
+@@ -704,7 +705,9 @@ static int rsx_vp_decompile_impl(
+     if (has_flow) emit(&o, "    }\n");
+ 
+     /* Output register map (see header comment): o0 = HPOS through the RSX
+-     * viewport transform, o1/o2 = colors, o5.x = fog, o7..o14 = TEX0..7. */
++     * viewport transform, o1/o2 = colors, o5.x = fog, o7..o14 = TEX0..7,
++     * o15 = TEX8, o6 = TEX9 (RPCS3's reg_table: TEX9 shares the point-size
++     * register). */
+     emit(&o,
+         "    VSOutput Out;\n"
+         "    float4 _p = o[0];\n"
+@@ -712,6 +715,7 @@ static int rsx_vp_decompile_impl(
+         "    Out.col0 = o[1]; Out.col1 = o[2]; Out.fog = o[5].xxxx;\n"
+         "    Out.t0=o[7];  Out.t1=o[8];  Out.t2=o[9];  Out.t3=o[10];\n"
+         "    Out.t4=o[11]; Out.t5=o[12]; Out.t6=o[13]; Out.t7=o[14];\n"
++        "    Out.t8=o[15]; Out.t9=o[6];\n"
+         "    return Out;\n"
+         "}\n");
+ 
+diff --git a/libs/video/tests/test_shader_msl.c b/libs/video/tests/test_shader_msl.c
+index bbab5b51..23513173 100644
+--- a/libs/video/tests/test_shader_msl.c
++++ b/libs/video/tests/test_shader_msl.c
+@@ -220,6 +220,49 @@ int main(int argc, char** argv)
+         }
+     }
+ 
++    /* ---- fragment program: MOV r0, FACING ---------------------------------
++     * Input 0xE is the face flag, +1 front / -1 back. Two-sided materials
++     * multiply the normal by it; it used to read as zero. */
++    {
++        u8 fp[16];
++        rsx_test_fp_instr(fp,
++                          RSX_TEST_FP_OPC(RSX_TEST_FP_OP_MOV) | RSX_TEST_FP_MASK_XYZW |
++                          RSX_TEST_FP_INSRC(0xE) | RSX_TEST_FP_END,
++                          RSX_TEST_FP_SRC_INPUT | RSX_TEST_FP_SWZ_IDENT);
++        check_count("FACING FP",
++                    rsx_fp_decompile_buffered_ex(fp, sizeof fp, 0x40u, 0,
++                                                 g_hlsl, sizeof g_hlsl, NULL), 1);
++        check("FACING FP HLSL", g_hlsl, "bool _rsx_front : SV_IsFrontFace;");
++        check("FACING FP HLSL", g_hlsl, "input._rsx_front ? float4(1,1,1,1) : float4(-1,-1,-1,-1)");
++        if (translate("FACING FP", RSX_SHADER_STAGE_FRAGMENT) == 0)
++            check("FACING FP MSL", g_msl, "[[front_facing]]");
++    }
++
++    /* ---- fragment program: MOV r0, TC8 / TC9 ------------------------------
++     * They follow TEXCOORD7 (locn10), and the VP writes them from o15 / o6. */
++    for (u32 n = 8; n <= 9; n++) {
++        u8 fp[16];
++        rsx_test_fp_instr(fp,
++                          RSX_TEST_FP_OPC(RSX_TEST_FP_OP_MOV) | RSX_TEST_FP_MASK_XYZW |
++                          RSX_TEST_FP_INSRC(0xC + (n - 8)) | RSX_TEST_FP_END,
++                          RSX_TEST_FP_SRC_INPUT | RSX_TEST_FP_SWZ_IDENT);
++        check_count("TC8/9 FP",
++                    rsx_fp_decompile_buffered_ex(fp, sizeof fp, 0x40u, 0,
++                                                 g_hlsl, sizeof g_hlsl, NULL), 1);
++        check("TC8/9 FP HLSL", g_hlsl, n == 8 ? "(input.tc8).xyzw" : "(input.tc9).xyzw");
++        check("TC8/9 FP HLSL", g_hlsl, "float4 tc8:TEXCOORD8; float4 tc9:TEXCOORD9;");
++        if (translate("TC8/9 FP", RSX_SHADER_STAGE_FRAGMENT) == 0)
++            check("TC8/9 FP MSL", g_msl, n == 8 ? "[[user(locn11)]]" : "[[user(locn12)]]");
++    }
++    {
++        u8 vp[16];
++        rsx_test_vp_mov_out(vp, 0, RSX_TEST_VP_SWZ_IDENT, 15, 1);   /* MOV o15, v0, END */
++        rsx_vp_decompile(vp, sizeof vp, g_hlsl, sizeof g_hlsl);
++        check("TC8 VP HLSL", g_hlsl, "Out.t8=o[15]; Out.t9=o[6];");
++        if (translate("TC8 VP", RSX_SHADER_STAGE_VERTEX) == 0)
++            check("TC8 VP MSL", g_msl, "[[user(locn11)]]");
++    }
++
+     /* ---- fragment program: TEX r0, TC0 (unit 0) --------------------------- */
+     {
+         u8 fp[16];

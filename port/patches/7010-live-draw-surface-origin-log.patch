@@ -1,0 +1,95 @@
+Live draw diagnostic: name the caller and the guest state that created each live surface.
+Toro's own patch (7xxx), diagnostic only (no behaviour change).
+What: the "[surfsz] new live surface" line (first 24 surfaces) now says which path created the surface
+(render-target, mrt, blit-dst, display-tile) and the frame, followed by the render-target state (colour format,
+antialias mode and sample grid, clip, pitches, offsets, target, zeta) or the blit (source, source surface, pitches,
+size). The state is only formatted when a surface is created.
+Why: runs tlp-7009b and tlp-7009n-1 (title 3D scene black) both create a second live surface 0:0x1FB0000 at
+2560x1440 around frame 770 (116 s), aliasing the 5120x2880 antialiased scene surface at the same address; no run
+with a normal title creates it. Which path makes it, and with which state, is not in the log.
+Switch: none.
+Verify: build; the [surfsz] lines carry "via ..." and an "rt:" or "blit:" line.
+
+diff --git a/libs/video/rsx_live_draw.c b/libs/video/rsx_live_draw.c
+--- a/libs/video/rsx_live_draw.c
++++ b/libs/video/rsx_live_draw.c
+@@ -5420,6 +5420,12 @@ static DXGI_FORMAT ld_color_dxgi(u32 color_format)
+                                                           : DXGI_FORMAT_R8G8B8A8_UNORM;
+ }
+ 
++/* Toro patch 7010 diagnostic: which caller created a live surface, with its guest state, on the "[surfsz] new"
++ * line (which stays limited to 24). Callers set these just before surface_get (rsx thread); formatted only when a
++ * surface is created. */
++static const char* g_ld_sg_why = "?";
++static const rsx_dsp_surface* g_ld_sg_sf;   /* render-target / mrt: the surface state */
++static u32 g_ld_sg_blit[7];                 /* blit-dst: src loc, src abs, src pitch, src slot, dst pitch, w, h */
+ static u32 surface_get(u32 location, u32 offset, u32 want_w, u32 want_h,
+                        DXGI_FORMAT want_fmt)
+ {
+@@ -5481,8 +5487,22 @@ static u32 surface_get(u32 location, u32 offset, u32 want_w, u32 want_h,
+     slot = g.n_surfaces;
+     { static u32 new_logs = 0;
+       if (new_logs++ < 24)
+-          fprintf(stderr, "[surfsz] new live surface %u:0x%X %ux%u (slot %u)\n",
+-                  location, offset, want_w, want_h, slot); }
++          fprintf(stderr, "[surfsz] new live surface %u:0x%X %ux%u (slot %u) via %s frame=%u\n",
++                  location, offset, want_w, want_h, slot, g_ld_sg_why, g_ld_frames);
++          const rsx_dsp_surface* q = g_ld_sg_sf;   /* patch 7010 */
++          if (q && new_logs <= 24)
++              fprintf(stderr, "[surfsz]   rt: color fmt %u aa %u (%ux%u) clip %u,%u %ux%u pitch %u/%u/%u/%u"
++                              " offsets 0x%X/0x%X/0x%X/0x%X target 0x%X zeta %u:0x%X pitch %u\n",
++                      q->color_format, q->antialias, q->aa_sx, q->aa_sy, q->clip_x, q->clip_y, q->clip_w, q->clip_h,
++                      q->color_pitch[0], q->color_pitch[1], q->color_pitch[2], q->color_pitch[3], q->color_offset[0],
++                      q->color_offset[1], q->color_offset[2], q->color_offset[3], q->color_target, q->zeta_location,
++                      q->zeta_offset, q->zeta_pitch);
++          else if (!strcmp(g_ld_sg_why, "blit-dst") && new_logs <= 24)
++              fprintf(stderr, "[surfsz]   blit: src %u:0x%X pitch %u in surface %u (%ux%u), dst pitch %u, %ux%u\n",
++                      g_ld_sg_blit[0], g_ld_sg_blit[1], g_ld_sg_blit[2], g_ld_sg_blit[3],
++                      g_ld_sg_blit[3] < g.n_surfaces ? g.surfaces[g_ld_sg_blit[3]].w : 0u,
++                      g_ld_sg_blit[3] < g.n_surfaces ? g.surfaces[g_ld_sg_blit[3]].h : 0u,
++                      g_ld_sg_blit[4], g_ld_sg_blit[5], g_ld_sg_blit[6]); }
+     D3D12_HEAP_PROPERTIES hp = {0}; hp.Type = D3D12_HEAP_TYPE_DEFAULT;
+     D3D12_RESOURCE_DESC rd = {0};
+     rd.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+@@ -5688,6 +5708,7 @@ int rsx_live_draw_resolve_blit(u32 src_loc, u32 src_abs, u32 src_pitch, u32 ds,
+     const display_buffer_t* db = &g.display_buffers[bi];
+     const u32 dx = (dst_abs - db->offset) % db->pitch / 4u + out_x;
+     const u32 dy = (dst_abs - db->offset) / db->pitch + out_y;
++    g_ld_sg_why = "display-tile"; g_ld_sg_sf = NULL;   /* patch 7010 */
+     const u32 slot = surface_get(db->location, db->offset, db->width, db->height, g.surfaces[si].fmt);
+     if (slot == LD_INVALID_SURFACE || (int)slot == si) return 0;
+     surface_t* dst = &g.surfaces[slot];
+@@ -5759,6 +5780,9 @@ static int ld_blit_gpu(u32 src_loc, u32 src_abs, u32 src_pitch,
+     if (si < 0) return -1;            /* source is not a live surface */
+     int di = surface_containing(dst_loc, dst_abs, dst_pitch, w, h, &dx, &dy);
+     if (di < 0) {
++        g_ld_sg_why = "blit-dst"; g_ld_sg_sf = NULL;   /* patch 7010 */
++        g_ld_sg_blit[0] = src_loc; g_ld_sg_blit[1] = src_abs; g_ld_sg_blit[2] = src_pitch; g_ld_sg_blit[3] = (u32)si;
++        g_ld_sg_blit[4] = dst_pitch; g_ld_sg_blit[5] = w; g_ld_sg_blit[6] = h;
+         const u32 slot = surface_get(dst_loc, dst_abs, dst_pitch / 4u, h,
+                                      g.surfaces[si].fmt);
+         if (slot == LD_INVALID_SURFACE) return -2;
+@@ -5797,9 +5821,11 @@ static u32 current_surface(void)
+ {
+     rsx_dsp_surface sf;
+     rsx_dsp_get_surface(&g.rsx, &sf);
++    g_ld_sg_why = "render-target"; g_ld_sg_sf = &sf;   /* patch 7010 */
+     const u32 slot = surface_get(sf.color_location[0], sf.color_offset[0],
+                                  sf.clip_w, sf.clip_h,
+                                  ld_color_dxgi(sf.color_format));
++    g_ld_sg_sf = NULL;
+     if (slot != LD_INVALID_SURFACE) g.surfaces[slot].pitch = sf.color_pitch[0];
+     return slot;
+ }
+@@ -12819,9 +12845,11 @@ static void sink_end_impl(void* user, const rsx_dispatch* r)
+         rsx_dsp_get_surface(&g.rsx, &msf);
+         const u32 want = ld_rt_count(msf.color_target);
+         for (u32 r = 1; r < want; r++) {
++            g_ld_sg_why = "mrt"; g_ld_sg_sf = &msf;   /* patch 7010 */
+             const u32 s = surface_get(msf.color_location[r], msf.color_offset[r],
+                                       msf.clip_w, msf.clip_h,
+                                       ld_color_dxgi(msf.color_format));
++            g_ld_sg_sf = NULL;
+             if (s == LD_INVALID_SURFACE || s == target) break;
+             g.surfaces[s].pitch = msf.color_pitch[r];
+             mrt[n_mrt++] = s;

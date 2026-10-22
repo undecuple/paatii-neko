@@ -1,0 +1,30 @@
+kind	area	feature	ps3	status	evidence
+ps3	Boot and menus	Publisher and studio logos	Shown at every start	works	Play to the title in every test run since 2026-10-19
+ps3	Boot and menus	Title screen	3D scene, logo and “Press button”	partial	Draws; its 3D background sometimes stays black. Cause found 2026-10-22 (a command-stream form the runtime did not read); the fix is being tested
+ps3	Boot and menus	Attract movie when the title idles	Plays a movie	not yet	Movie playback (cellSail) is not implemented
+ps3	Boot and menus	Main menu	Story, Game, Gallery, Extras, Options, with a help line	works	2026-10-20 runs: the menu draws and takes input
+ps3	Boot and menus	Menu labels and titles	Full-size text	partial	Some labels and titles are cut off (hand play 2026-10-21); a fix is being tested
+ps3	Story	Memory book with photos, narration and speech bubbles	Page through the book	works	2026-10-20 runs; hand play 2026-10-21
+ps3	Story	Real-time 3D story scenes	Toro in his room, speech bubbles advanced with Cross	works	2026-10-20 runs; hand play 2026-10-21 through episode 2 to “To Be Continued”
+ps3	Story	Paging back and forth	Pages turn cleanly	partial	Hand play 2026-10-21: text can overlap the page images after paging; pages load slowly
+ps3	Story	Reopening an episode after paging	Episodes reopen from the book	partial	Hand play 2026-10-21: after paging, an episode may not open again
+ps3	Minigames	Flap your wings! Chick!	Motion minigame with a score screen	works	A full round to its score screen (2026-10-20); with the right stick standing in for motion it scores 10 (2026-10-21)
+ps3	Minigames	The other minigames	33 minigame families on the disc	not yet	Not played yet
+ps3	Modes	Game mode	Category list, minigame info, character select	works	2026-10-20 run
+ps3	Modes	Gallery	Collected pictures	partial	Opens (hand play 2026-10-21); its labels are cut off like the menu's
+ps3	Modes	Extras, Options	Menus	not yet verified	Not opened yet
+ps3	Text	Latin text	Game and firmware fonts	works	Needs the PS3 system fonts from your own console's firmware
+ps3	Text	Japanese text	Kana and kanji	not yet verified	Not checked yet
+ps3	Input	Keyboard	-	works	Scripted keyboard runs; hand play 2026-10-21
+ps3	Input	Gamepad	DualShock 3	partial	Pads go through SDL3; a PlayStation 4 pad has not yet been confirmed by hand
+ps3	Input	Motion sensor	SIXAXIS tilt and shake	partial	The game's sensor mode is honoured; real motion from a pad is untested
+ps3	Sound	Music and sound effects	-	not yet verified	Test runs have audio off
+ps3	Saves	Save and load progress	Game saves to the console	partial	The game writes its save (hand play 2026-10-21); loading it after a restart is untested
+ps3	Trophies	Trophies	49 trophies	not yet	Not implemented
+ps3	Online	Online features	Network functions	not yet	Not supported
+ps3	Speed	Frame rate	30 frames per second	partial	About 24 to 27 in the Story mode and the first minigame, 29.8 in the book (measured 2026-10-21)
+port	Port only	Right stick stands in for motion	On a pad without a motion sensor, or on the keyboard	works	Tuned to the chick minigame's own swing test; scores 10 (2026-10-21)
+port	Port only	Keyboard plays as the pad	-	works	Scripted runs; hand play 2026-10-21
+port	Port only	Borderless fullscreen and display options	-	not yet	Planned
+port	Port only	Installer and portable zip	-	not yet	Planned
+port	Port only	Button prompts for the device in use	-	not yet	Planned; the game draws PlayStation buttons only

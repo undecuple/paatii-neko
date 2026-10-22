@@ -1,0 +1,122 @@
+cellJpgDec: read CellJpgDecSrc and CellJpgDecInParam at the SDK's guest offsets; RGBA/ARGB alpha from outputColorAlpha.
+Toro's own patch (7xxx), candidate for upstream.
+What: jpgdec_src_load reads srcSelect +0, fileName (char*) +4, fileOffset +8, fileSize +16, streamPtr +20,
+streamSize +24, spuThreadEnable +28; jpgdec_in_param_load reads commandPtr +0, downScale +4, method +8, outputMode +12,
+outputColorSpace +16, outputColorAlpha (u8) +20; DecodeData fills the alpha byte of RGBA/ARGB output with
+outputColorAlpha (a JPEG has none). The host CellJpgDecInParam gains method and outputColorAlpha.
+Why: the loaders used offsetof() on the host structs, which keep the file name inline (1024 bytes) and a 64-bit
+streamPtr, so a buffer source read garbage: Toro's Open after the story prologue logged "buffer: guest_addr=0x00455854
+size=808583168" and "stbi_info failed: unknown image type" (run tlp-story2). InParam's fields were read in the wrong
+order (outputColorSpace taken from the method slot). Layouts as RPCS3's cellJpgDec.h and cellPngDec.c's own Src.
+diff --git a/libs/codec/cellJpgDec.c b/libs/codec/cellJpgDec.c
+--- a/libs/codec/cellJpgDec.c
++++ b/libs/codec/cellJpgDec.c
+@@ -153,21 +153,31 @@
+  * -----------------------------------------------------------------------*/
+ #define JPG_EA(p) ((u32)(uintptr_t)(p))
+ 
++/* Guest structures are read at the SDK's offsets, not through the host structs: the host CellJpgDecSrc keeps the
++ * file name inline (1024 bytes) and a 64-bit streamPtr, so offsetof() on it lands far past the guest's fields and a
++ * buffer source came out as a garbage address and size ("stbi_info failed: unknown image type"). SDK layouts
++ * (<cell/codec/jpgdec.h>, as cellPngDec.c reads its own Src):
++ *   CellJpgDecSrc:     srcSelect +0, fileName (char*) +4, fileOffset (u64) +8, fileSize +16, streamPtr +20,
++ *                      streamSize +24, spuThreadEnable +28
++ *   CellJpgDecInParam: commandPtr +0, downScale +4, method +8, outputMode +12, outputColorSpace +16,
++ *                      outputColorAlpha (u8) +20 */
+ static void jpgdec_src_load(CellJpgDecSrc* h, const CellJpgDecSrc* guest_ea)
+ {
+     u32 ea = JPG_EA(guest_ea);
+     memset(h, 0, sizeof(*h));
+     if (!ea)
+         return;
+-    h->srcSelect       = vm_read32(ea + (u32)offsetof(CellJpgDecSrc, srcSelect));
+-    h->fileOffset      = vm_read64(ea + (u32)offsetof(CellJpgDecSrc, fileOffset));
+-    h->fileSize        = vm_read32(ea + (u32)offsetof(CellJpgDecSrc, fileSize));
+-    h->streamPtr       = vm_read64(ea + (u32)offsetof(CellJpgDecSrc, streamPtr));
+-    h->streamSize      = vm_read32(ea + (u32)offsetof(CellJpgDecSrc, streamSize));
+-    h->spuThreadEnable = vm_read32(ea + (u32)offsetof(CellJpgDecSrc, spuThreadEnable));
+-    memcpy(h->fileName, vm_base + ea + offsetof(CellJpgDecSrc, fileName),
+-           sizeof(h->fileName));
+-    h->fileName[sizeof(h->fileName) - 1] = '\0';
++    h->srcSelect       = vm_read32(ea + 0);
++    h->fileOffset      = vm_read64(ea + 8);
++    h->fileSize        = vm_read32(ea + 16);
++    h->streamPtr       = vm_read32(ea + 20);
++    h->streamSize      = vm_read32(ea + 24);
++    h->spuThreadEnable = vm_read32(ea + 28);
++    u32 name = vm_read32(ea + 4);
++    for (u32 i = 0; name && i < sizeof(h->fileName) - 1; i++) {
++        h->fileName[i] = (char)vm_read8(name + i);
++        if (!h->fileName[i]) break;
++    }
+ }
+ 
+ static void jpgdec_in_param_load(CellJpgDecInParam* h,
+@@ -177,10 +187,12 @@
+     memset(h, 0, sizeof(*h));
+     if (!ea)
+         return;
+-    const u32 n = (u32)(sizeof(*h) / 4);   /* all u32 */
+-    u32* w = (u32*)h;
+-    for (u32 i = 0; i < n; i++)
+-        w[i] = vm_read32(ea + i * 4);
++    h->commandPtr       = vm_read32(ea + 0);
++    h->downScale        = vm_read32(ea + 4);
++    h->method           = vm_read32(ea + 8);
++    h->outputMode       = vm_read32(ea + 12);
++    h->outputColorSpace = vm_read32(ea + 16);
++    h->outputColorAlpha = vm_read8(ea + 20);
+ }
+ 
+ /* CellJpgDecInfo is four consecutive u32. */
+@@ -311,7 +323,10 @@
+     {
+         int w, h, comp;
+         if (!stbi_info_from_memory(sub->src_data, (int)sub->src_size, &w, &h, &comp)) {
+-            printf("[cellJpgDec] stbi_info failed: %s\n", stbi_failure_reason());
++            const unsigned char* d = (const unsigned char*)sub->src_data;
++            printf("[cellJpgDec] stbi_info failed: %s (size %u, first bytes", stbi_failure_reason(), (u32)sub->src_size);
++            for (u32 i = 0; d && i < 16 && i < sub->src_size; i++) printf(" %02X", d[i]);
++            printf(")\n");
+             return CELL_JPGDEC_ERROR_HEADER;
+         }
+ 
+@@ -479,11 +494,15 @@
+ 
+         u32 total = (u32)w * (u32)h * (u32)desired_comp;
+ 
+-        /* Handle ARGB: convert from RGBA to ARGB (PS3 native) */
+-        if (sub->in_param.outputColorSpace == CELL_JPGDEC_ARGB && desired_comp == 4) {
++        /* A JPEG has no alpha: the RGBA/ARGB outputs carry the caller's outputColorAlpha. ARGB is the PS3's
++         * native order. */
++        if (desired_comp == 4) {
++            const u8 a = (u8)sub->in_param.outputColorAlpha;
++            const int argb = sub->in_param.outputColorSpace == CELL_JPGDEC_ARGB;
+             for (u32 i = 0; i < total; i += 4) {
+-                u8 r = pixels[i+0], g = pixels[i+1], b = pixels[i+2], a = pixels[i+3];
+-                pixels[i+0] = a; pixels[i+1] = r; pixels[i+2] = g; pixels[i+3] = b;
++                u8 r = pixels[i+0], g = pixels[i+1], b = pixels[i+2];
++                if (argb) { pixels[i+0] = a; pixels[i+1] = r; pixels[i+2] = g; pixels[i+3] = b; }
++                else      pixels[i+3] = a;
+             }
+         }
+ 
+diff --git a/libs/codec/cellJpgDec.h b/libs/codec/cellJpgDec.h
+--- a/libs/codec/cellJpgDec.h
++++ b/libs/codec/cellJpgDec.h
+@@ -84,12 +84,14 @@
+     u32 colorSpace;
+ } CellJpgDecInfo;
+ 
+-typedef struct CellJpgDecInParam {
++typedef struct CellJpgDecInParam {   /* host copy; the guest layout is read field by field (cellJpgDec.c) */
+     u32 commandPtr;
+     u32 outputMode;
+     u32 outputColorSpace;
+     u32 downScale;
+     u32 outputBitDepth; /* not in PS3 SDK but useful */
++    u32 method;
++    u32 outputColorAlpha;
+ } CellJpgDecInParam;
+ 
+ typedef struct CellJpgDecOutParam {

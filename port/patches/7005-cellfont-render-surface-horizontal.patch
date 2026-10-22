@@ -1,0 +1,863 @@
+cellFont: render surface, horizontal glyph images, font instances, OnMemory fontsets; SDK argument order for the open functions.
+Toro's own patch (7xxx).
+What: implements the five cellFont imports Toro calls that had no implementation and fell to the unresolved-NID
+default (r3 = 0, outputs untouched; the 40-line log cap hid them):
+  cellFontRenderSurfaceInit 0x90B9465E: fills the guest CellFontRenderSurface (0x24 bytes: buffer, widthByte,
+    pixelSizeByte, width, height, scissor x0 y0 x1 y1), default scissor = the whole surface.
+  cellFontRenderSurfaceSetScissor 0xB422B005: stores the clip rect (x0, y0, x0+w, y0+h, clipped to the surface).
+  cellFontRenderCharGlyphImageHorizontal 0x1A218FE4: a context handler (x, y arrive in f1/f2). Rasterises the glyph
+    with stb_truetype at the scale the metrics functions use, origin on the baseline, clips it to the scissor, copies
+    the coverage into a font-owned guest buffer (the cellFontOutline.c pool) and fills CellFontImageTransInfo (image,
+    imageWidthByte, imageWidth, imageHeight, surface position, surfWidthByte) plus the glyph metrics, as the plain
+    cellFontRenderCharGlyphImage does. Without a transInfo it writes the coverage into the surface.
+  cellFontOpenFontInstance 0x29329541: a new handle sharing the opened font's data (and fontset chain), own scale.
+  cellFontOpenFontsetOnMemory 0x073FA321: same as cellFontOpenFontset.
+Also fixes cellFontOpenFontMemory / cellFontOpenFontFile, which took the CellFont as the first argument: the SDK
+order is (library, data, size, subNum, uniqueId, font) / (library, path, subNum, uniqueId, font). They wrote the handle
+into the library object, so every Toro font kept handle 0 and resolved to slot 0 by accident. subNum now selects the
+face of a collection, OpenFontFile goes through cellfs_translate_path, CELL_FONT_MAX_OPENED is 64 (was 8; one
+instance per font per text object), closing a font frees its image buffer and hands borrowed data over to an instance
+still using it. Diagnostic: OpenFontMemory prints, once per font buffer, the stb parse result (valid/INVALID), the
+first 4 bytes and the size.
+Evidence (lifted EBOOT, work/recomp/ppu_recomp_045.cpp; layouts in the comment block at the end of cellFont.c):
+0x14AA88 / 0x14AD30 SurfaceInit(obj+4, tex+0x80, px*w, px, w, h) with the object's own field at +0x28 (surface = 0x24
+bytes), px = 4 (A8R8G8B8) or 2 (A4R4G4B4); 0x14A9C8 SetScissor(obj+4, x0, y0, w, h); 0x14BBE0 Horizontal(font, code,
+surface, f1 x, f2 y, r8 metrics, r9 transInfo) with y = scissor y0 + baseLineY, advance read at metrics +0x10, '?'
+redrawn when metrics width is 0; the title's transfer loops 0x14A338 / 0x14A410 read transInfo +0x00..+0x14 and
+composite the coverage themselves; 0x14C3D4 / 0x14C4D4 open calls (font in r8 / r7); 0x14C5C4 OnMemory(lib, type,
+font); 0x14C650 one OpenFontInstance(opened, new) per font per text object. Function semantics from the SDK names and
+psdevwiki-level knowledge; RPCS3's cellFont.cpp read for behaviour only, nothing copied.
+ASSUMPTION: scissor stored as x1/y1 exclusive (the title never reads it); without a transInfo the coverage byte fills
+every byte of a pixel (max-blended); weight/slant effects are not applied.
+Needs port/tlp/hle_tlp.cpp without its own cellFontInitializeWithRevision handler (removed 2026-10-19): that
+handler returned 0 without initialising this library, so every cellFont call returned 0x80540003 (run tlp-7005: the
+OpenFontsetOnMemory now implemented returned that error as the font index, OpenFontMemory was refused silently).
+Also (run tlp-7007, firmware fonts present):
+  Renderer API in SDK form: cellFontCreateRenderer(library, config, renderer), Bind(font, renderer),
+    Destroy(renderer), the renderer being a title-owned object passed by address (0x14C6C4 r5 = obj+4, 0x14A898 r4 =
+    obj+4, 0x14B8F4 r3 = obj+4). The old 2-argument Create with a table of 4 renderers failed the 5th text object with
+    0x80540005 and every bind with 0x80540002.
+  cellFontSetupRenderScalePixel no longer sets the font scale (KZ3 patch 5005 mapped it onto SetScalePixel). Toro calls
+    it after every bind with 0.0, 0.0 (0x14A8A8, f1 = f2 = TOC-0x5248 = 0.0f), which made every font's scale 0: all
+    metrics and layouts 0 and no glyph. ASSUMPTION: w, h > 0 still sets the scale (KZ3), 0 leaves it.
+  Metrics and glyph bitmaps of a fontset come from the first file of its chain that has the code (they used only the
+    first loadable file, SR-R-LATIN for 0x10B, so kana/kanji had no glyph); scale per face.
+  Diagnostics: the first TLP_FONT_TRACE (default 16) calls of SetScalePixel, SetupRenderScalePixel,
+    GetHorizontalLayout, GetRenderCharGlyphMetrics and RenderCharGlyphImageHorizontal (inputs, outputs, surface and
+    transInfo) and of RenderSurfaceInit print one line each. TLP_FONT_BLANK=1 (default off) hands out no glyph image,
+    metrics unchanged: a bisect switch for the image path.
+  Scale: a pixel scale maps onto the face's OS/2 win cell (usWinAscent + usWinDescent; hhea ascent/descent when there
+    is no OS/2), baseLineY = win ascent, lineHeight = cell + hhea lineGap, effectHeight = cell. stb's
+    ScaleForPixelHeight (hhea) put capitals 6 px above the scissor Toro sets from baseLineY/effectHeight/lineHeight
+    (run tlp-7008, "Ihe cat's name was Ioro"). ASSUMPTION, reasoning in font_face_metrics.
+Switch: none (TLP_FONT_TRACE, TLP_FONT_BLANK diagnostics only).
+Verify: build; run to the Story memory book: the log has one "[cellFont] OpenFontMemory(... stb=valid magic=...)" line
+per font, no [hle] cellFont error lines, no "unresolved NID 0x1A218FE4 / 0x90B9465E / 0xB422B005 / 0x29329541 / 0x073FA321" (patch 7006), and the
+speech bubble shows its text.
+
+diff --git a/libs/font/cellFont.h b/libs/font/cellFont.h
+--- a/libs/font/cellFont.h
++++ b/libs/font/cellFont.h
+@@ -37,7 +37,10 @@ extern "C" {
+  * Constants
+  * -----------------------------------------------------------------------*/
+ 
+-#define CELL_FONT_MAX_OPENED        8
++/* Toro patch 7005: was 8. Toro opens each font once (cellFontOpenFontMemory / OpenFontset) and then one
++ * cellFontOpenFontInstance per font for every text object (EBOOT 0x14C650), so 8 slots ran out. 64 is the number of
++ * fontset chains cellFontOutline.c keeps (MAX_HANDLES), which is indexed by the same handle. */
++#define CELL_FONT_MAX_OPENED        64
+ #define CELL_FONT_MAX_RENDERERS     4
+ 
+ /* Font type constants */
+@@ -127,16 +130,23 @@ s32 cellFontInit(const CellFontConfig* config);
+ s32 cellFontInitializeWithRevision(u64 revisionFlags, const CellFontConfig* config);
+ s32 cellFontEnd(void);
+ 
+-s32 cellFontOpenFontFile(CellFont* font, const char* fontPath, u32 subNum, s32 uniqueId);
+-s32 cellFontOpenFontMemory(CellFont* font, const void* data, u32 dataSize, u32 subNum, s32 uniqueId);
++/* Toro patch 7005: the library comes first and the CellFont last, as in the SDK; these used to take the font as the
++ * first argument (see cellFont.c). */
++s32 cellFontOpenFontFile(const CellFontLibrary* library, const char* fontPath, u32 subNum, s32 uniqueId,
++                         CellFont* font);
++s32 cellFontOpenFontMemory(const CellFontLibrary* library, const void* data, u32 dataSize, u32 subNum,
++                           s32 uniqueId, CellFont* font);
+ s32 cellFontOpenFontset(CellFontLibrary lib, CellFontType* fontType, CellFont* font);
++s32 cellFontOpenFontsetOnMemory(CellFontLibrary lib, CellFontType* fontType, CellFont* font);
++s32 cellFontOpenFontInstance(CellFont* openedFont, CellFont* font);
+ s32 cellFontCloseFont(CellFont* font);
+ 
+ s32 cellFontSetFontOpenMode(u32 openMode);
+ 
+-s32 cellFontCreateRenderer(CellFontLibrary lib, CellFontRenderer* renderer);
+-s32 cellFontDestroyRenderer(CellFontRenderer renderer);
+-s32 cellFontBindRenderer(CellFont* font, CellFontRenderer renderer);
++/* Toro patch 7005: SDK forms; the renderer is a title-owned object passed by address (see cellFont.c). */
++s32 cellFontCreateRenderer(const CellFontLibrary* library, const void* config, CellFontRenderer* renderer);
++s32 cellFontDestroyRenderer(CellFontRenderer* renderer);
++s32 cellFontBindRenderer(CellFont* font, CellFontRenderer* renderer);
+ s32 cellFontUnbindRenderer(CellFont* font);
+ 
+ s32 cellFontSetScalePixel(CellFont* font, float w, float h);
+@@ -158,6 +168,13 @@ s32 cellFontGetRenderCharGlyphMetricsVertical(CellFont* font, u32 code,
+                                                CellFontGlyphMetrics* metrics);
+ 
+ s32 cellFontSetupRenderScalePixel(CellFont* font, float w, float h);
++s32 kz3_font_setup_render_scale_pixel(u32 font_ea, float w, float h);   /* Toro patch 7005 */
++
++/* Toro patch 7005. The pointers are guest EAs. cellFontRenderCharGlyphImageHorizontal takes floats (f1/f2), so it
++ * is a context handler inside cellFont.c and not declared here. */
++s32 cellFontRenderSurfaceInit(CellFontRenderSurface* surface, void* buffer, s32 bufferWidthByte,
++                              s32 pixelSizeByte, s32 w, s32 h);
++s32 cellFontRenderSurfaceSetScissor(CellFontRenderSurface* surface, s32 x0, s32 y0, s32 w, s32 h);
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/libs/font/cellFont.c b/libs/font/cellFont.c
+--- a/libs/font/cellFont.c
++++ b/libs/font/cellFont.c
+@@ -8,6 +8,9 @@
+ 
+ #include "cellFont.h"
+ #include "../../runtime/ppu/ppu_memory.h"   /* GUEST_PTR, vm_read/vm_write: guest EA -> host */
++#include "../../runtime/ppu/ppu_context.h"  /* Toro patch 7005: context handler (float arguments) */
++#include "../../include/ps3emu/nid.h"       /* ps3_compute_nid */
++#include "../filesystem/cellFs.h"           /* cellfs_translate_path (Toro patch 7005) */
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -38,7 +41,7 @@ typedef struct {
+     float   scale_y;
+     float   effect_weight;
+     float   effect_slant;
+-    u32     renderer;       /* bound renderer index, or 0xFFFFFFFF */
++    u32     renderer;       /* bound renderer's guest address (Toro patch 7005), or 0xFFFFFFFF */
+     /* Font data */
+     u8*     font_data;      /* TTF file data (owned if loaded from file) */
+     u32     font_data_size;
+@@ -47,16 +50,16 @@ typedef struct {
+     stbtt_fontinfo stb_info;
+     int     stb_valid;
+ #endif
++    /* Toro patch 7005 */
++    int     is_fontset;     /* opened by cellFontOpenFontset*: glyphs come from the cellFontOutline.c chain */
++    u32     img_ea;         /* guest buffer for the glyph image handed out in CellFontImageTransInfo */
++    u32     img_cap;
+ } FontSlot;
+ 
+-typedef struct {
+-    int in_use;
+-} RendererSlot;
+ 
+ static int          s_font_initialized = 0;
+ static u32          s_open_mode = CELL_FONT_OPEN_MODE_DEFAULT;
+ static FontSlot     s_fonts[CELL_FONT_MAX_OPENED];
+-static RendererSlot s_renderers[CELL_FONT_MAX_RENDERERS];
+ 
+ /* ---------------------------------------------------------------------------
+  * Helpers
+@@ -74,9 +77,37 @@ static FontSlot* font_alloc_slot(void)
+             return &s_fonts[i];
+         }
+     }
++    { static int warned = 0;   /* Toro patch 7005: say so instead of failing silently */
++      if (!warned) { warned = 1; printf("[cellFont] all %d font slots are in use; open fails\n", CELL_FONT_MAX_OPENED); } }
+     return NULL;
+ }
+ 
++/* Toro patch 7005: guest image buffer of the pool in cellFontOutline.c. */
++u32  tlp_font_pool_alloc(u32 bytes, u32* cap_out);
++void tlp_font_pool_free(u32 ea);
++
++/* Release what a slot owns. A cellFontOpenFontInstance slot borrows its parent's font data; if the parent is closed
++ * first, the ownership moves to a borrowing slot instead of freeing data still in use. */
++static void font_release_slot(FontSlot* slot)
++{
++    tlp_font_pool_free(slot->img_ea);
++    slot->img_ea = slot->img_cap = 0;
++    if (slot->font_data_owned && slot->font_data) {
++        for (int i = 0; i < CELL_FONT_MAX_OPENED; i++) {
++            FontSlot* o = &s_fonts[i];
++            if (o != slot && o->in_use && o->font_data == slot->font_data && !o->font_data_owned) {
++                o->font_data_owned = 1;
++                slot->font_data_owned = 0;
++                break;
++            }
++        }
++        if (slot->font_data_owned) free(slot->font_data);
++    }
++    slot->font_data = NULL;
++    slot->font_data_owned = 0;
++    slot->in_use = 0;
++}
++
+ 
+ /* ---------------------------------------------------------------------------
+  * Guest struct marshalling
+@@ -175,15 +206,43 @@ static FontSlot* font_get_slot(CellFont* font)
+ }
+ 
+ #if FONT_HAS_STB
++/* Toro patch 7005: the vertical extent a pixel scale maps onto, in font units: OS/2 usWinAscent / usWinDescent
++ * (the face's full cell, what GDI-style "pixel height" means), else hhea ascent / descent as before. The gap is hhea
++ * lineGap. Returns pixels per font unit for `px`.
++ * ASSUMPTION (no SDK text or binary at hand): libfont's SetScalePixel(h) maps h onto that cell and baseLineY is its
++ * ascent. Evidence it is not the hhea extent: in run tlp-7007b (scale 30) Toro set a scissor y0 = -5, height 31
++ * and drew at y = 19.05 = y0 + baseLineY (24.05); -5 and 31 match (int)(baseLineY - effectHeight) and
++ * (int)lineHeight (inferred from the values, the code computing them was not traced). With
++ * the hhea extent (SR-R-LATIN 780/-193 of 1000) a capital's top lands 6 px above the scissor ("Ihe cat's name was
++ * Ioro", tlp-7008). With the win cell (1029/203) the same text fits: baseline 25.1, cap 19.2, descender 4.9 inside
++ * a 31-px line. For SR-R-JPN both are 880/120 = 1000 units, unchanged. */
++static float font_face_metrics(const stbtt_fontinfo* f, float px, int* asc, int* desc, int* gap)
++{
++    int a = 0, d = 0, g = 0;
++    stbtt_GetFontVMetrics(f, &a, &d, &g);
++    stbtt_uint32 os2 = stbtt__find_table(f->data, (stbtt_uint32)f->fontstart, "OS/2");
++    if (os2) {
++        const int wa = ttUSHORT(f->data + os2 + 74), wd = ttUSHORT(f->data + os2 + 76);
++        if (wa + wd > 0) { a = wa; d = -wd; }
++    }
++    if (asc) *asc = a;
++    if (desc) *desc = d;
++    if (gap) *gap = g;
++    return (a - d) > 0 ? px / (float)(a - d) : 0.0f;
++}
++
+ static float font_get_stb_scale(FontSlot* slot)
+ {
+     if (!slot->stb_valid) return 0.0f;
+-    return stbtt_ScaleForPixelHeight(&slot->stb_info, slot->scale_y);
++    return font_face_metrics(&slot->stb_info, slot->scale_y, NULL, NULL, NULL);
+ }
+ #endif
+ 
+ /* KZ3 patch 5005: cellFontOutline.c. */
+ void kz3_fontset_open(u32 handle, u32 type);
++#if FONT_HAS_STB
++int  tlp_font_find_glyph(u32 handle, u32 code, int* glyph, stbtt_fontinfo* out);   /* Toro patch 7005 */
++#endif
+ void kz3_fontset_close(u32 handle);
+ #if FONT_HAS_STB
+ int  kz3_fontset_primary(u32 handle, stbtt_fontinfo* out);
+@@ -196,6 +255,31 @@ int kz3_font_slot_stb(u32 handle, stbtt_fontinfo* out)
+ }
+ #endif
+ 
++#if FONT_HAS_STB
++/* Toro patch 7005: face + glyph index for `code`. A fontset slot searches its file chain (cellFontOutline.c); a font
++ * opened from a file or memory (or an instance of one) uses its own face. 0 when no face has the code. */
++static int font_face_glyph(FontSlot* slot, u32 code, stbtt_fontinfo* face, int* glyph)
++{
++    *glyph = 0;
++    if (slot->is_fontset) return tlp_font_find_glyph((u32)(slot - s_fonts), code, glyph, face) && *glyph;
++    if (!slot->stb_valid) return 0;
++    *face = slot->stb_info;
++    *glyph = stbtt_FindGlyphIndex(face, (int)code);
++    return *glyph != 0;
++}
++#endif
++
++/* Toro patch 7005 diagnostic: the first TLP_FONT_TRACE calls (default 16) of each scale/metrics/layout/render
++ * function print their inputs and outputs, so a run shows the values the title builds its text boxes from. */
++enum { FT_SCALE, FT_SETUP, FT_LAYOUT, FT_METRICS, FT_RENDER, FT_N };
++static int font_trace(int which)
++{
++    static int limit = -1;
++    static int n[FT_N];
++    if (limit < 0) { const char* e = getenv("TLP_FONT_TRACE"); limit = e ? atoi(e) : 16; }
++    return __atomic_fetch_add(&n[which], 1, __ATOMIC_RELAXED) < limit;
++}
++
+ /* ---------------------------------------------------------------------------
+  * API implementations
+  * -----------------------------------------------------------------------*/
+@@ -209,7 +293,6 @@ s32 cellFontInit(const CellFontConfig* config)
+         return CELL_FONT_ERROR_ALREADY_INITIALIZED;
+ 
+     memset(s_fonts, 0, sizeof(s_fonts));
+-    memset(s_renderers, 0, sizeof(s_renderers));
+     s_font_initialized = 1;
+     return CELL_OK;
+ }
+@@ -231,8 +314,7 @@ s32 cellFontEnd(void)
+         return CELL_FONT_ERROR_UNINITIALIZED;
+ 
+     for (int i = 0; i < CELL_FONT_MAX_OPENED; i++) {
+-        if (s_fonts[i].in_use && s_fonts[i].font_data_owned && s_fonts[i].font_data)
+-            free(s_fonts[i].font_data);
++        if (s_fonts[i].in_use) font_release_slot(&s_fonts[i]);   /* Toro patch 7005 */
+         s_fonts[i].in_use = 0;
+     }
+ 
+@@ -240,9 +322,13 @@ s32 cellFontEnd(void)
+     return CELL_OK;
+ }
+ 
+-s32 cellFontOpenFontFile(CellFont* font, const char* fontPath, u32 subNum, s32 uniqueId)
++/* Toro patch 7005: SDK argument order (library, path, subNum, uniqueId, font). This took the font first, so it wrote
++ * the handle into the library object and left the title's CellFont untouched (Toro EBOOT 0x14C4D4 passes r3 =
++ * library, r4 = path, r5 = 0, r6 = index, r7 = the CellFont it just zeroed). The guest path goes through cellFs. */
++s32 cellFontOpenFontFile(const CellFontLibrary* library, const char* fontPath, u32 subNum, s32 uniqueId,
++                         CellFont* font)
+ {
+-    (void)subNum;
++    (void)library;
+     (void)uniqueId;
+     fontPath = GUEST_PTR(fontPath, const char*);
+     printf("[cellFont] OpenFontFile(%s)\n", fontPath ? fontPath : "(null)");
+@@ -254,7 +340,8 @@ s32 cellFontOpenFontFile(CellFont* font, const char* fontPath, u32 subNum, s32 u
+     if (!slot) return CELL_FONT_ERROR_ALLOCATION_FAILED;
+ 
+     /* Load TTF file */
+-    FILE* f = fopen(fontPath, "rb");
++    char host_path[1024];
++    FILE* f = fopen(cellfs_translate_path(fontPath, host_path, sizeof host_path) == 0 ? host_path : fontPath, "rb");
+     if (!f) {
+         slot->in_use = 0;
+         printf("[cellFont] Cannot open font file: %s\n", fontPath);
+@@ -278,7 +365,7 @@ s32 cellFontOpenFontFile(CellFont* font, const char* fontPath, u32 subNum, s32 u
+ 
+ #if FONT_HAS_STB
+     if (stbtt_InitFont(&slot->stb_info, slot->font_data,
+-                       stbtt_GetFontOffsetForIndex(slot->font_data, 0))) {
++                       stbtt_GetFontOffsetForIndex(slot->font_data, (int)subNum))) {
+         slot->stb_valid = 1;
+     } else {
+         printf("[cellFont] stbtt_InitFont failed for: %s\n", fontPath);
+@@ -291,14 +378,20 @@ s32 cellFontOpenFontFile(CellFont* font, const char* fontPath, u32 subNum, s32 u
+     return CELL_OK;
+ }
+ 
+-s32 cellFontOpenFontMemory(CellFont* font, const void* data, u32 dataSize, u32 subNum, s32 uniqueId)
++/* Toro patch 7005: SDK argument order (library, data, size, subNum, uniqueId, font); see cellFontOpenFontFile. Toro
++ * EBOOT 0x14C3D4 passes r3 = library, r4 = data, r5 = size, r6 = 0, r7 = index, r8 = the CellFont it just zeroed. The
++ * old order wrote the handle into the library object, and every Toro font kept handle 0 (slot 0 by accident). */
++s32 cellFontOpenFontMemory(const CellFontLibrary* library, const void* data, u32 dataSize, u32 subNum,
++                           s32 uniqueId, CellFont* font)
+ {
+-    (void)subNum;
+-    (void)uniqueId;
+-    printf("[cellFont] OpenFontMemory(size=%u)\n", dataSize);
++    (void)library;
+ 
+     if (!s_font_initialized) return CELL_FONT_ERROR_UNINITIALIZED;
+-    if (!font || !data || dataSize == 0) return CELL_FONT_ERROR_INVALID_PARAMETER;
++    if (!font || !data || dataSize == 0) {
++        printf("[cellFont] OpenFontMemory(data=0x%08X size=%u font=0x%08X): invalid parameter\n",
++               FONT_EA(data), dataSize, FONT_EA(font));
++        return CELL_FONT_ERROR_INVALID_PARAMETER;
++    }
+ 
+     FontSlot* slot = font_alloc_slot();
+     if (!slot) return CELL_FONT_ERROR_ALLOCATION_FAILED;
+@@ -307,14 +400,28 @@ s32 cellFontOpenFontMemory(CellFont* font, const void* data, u32 dataSize, u32 s
+     slot->font_data_size = dataSize;
+     slot->font_data_owned = 0;
+ 
++    int stb_ok = -1;   /* -1: built without stb_truetype */
+ #if FONT_HAS_STB
+     if (stbtt_InitFont(&slot->stb_info, slot->font_data,
+-                       stbtt_GetFontOffsetForIndex(slot->font_data, 0))) {
++                       stbtt_GetFontOffsetForIndex(slot->font_data, (int)subNum))) {
+         slot->stb_valid = 1;
+     } else {
+         slot->stb_valid = 0;
+     }
++    stb_ok = slot->stb_valid;
+ #endif
++    /* Toro patch 7005 diagnostic: the parse result and the font's magic (00 01 00 00 TrueType, 'OTTO' CFF, 'ttcf'
++     * collection, 'true' Apple), once per font buffer. */
++    { static u32 seen[16]; static int n_seen = 0; int k = 0;
++      for (; k < n_seen; k++) if (seen[k] == FONT_EA(data)) break;
++      if (k == n_seen) {
++          if (n_seen < 16) seen[n_seen++] = FONT_EA(data);
++          const u8* m = slot->font_data;
++          printf("[cellFont] OpenFontMemory(data=0x%08X size=%u sub=%u id=%d) handle=%d stb=%s magic=%02X %02X %02X %02X\n",
++                 FONT_EA(data), dataSize, subNum, uniqueId, (int)(slot - s_fonts),
++                 stb_ok < 0 ? "absent" : stb_ok ? "valid" : "INVALID",
++                 dataSize > 0 ? m[0] : 0, dataSize > 1 ? m[1] : 0, dataSize > 2 ? m[2] : 0, dataSize > 3 ? m[3] : 0);
++      } }
+ 
+     font_store(font, (u32)(slot - s_fonts), 0, 1.0f, 1.0f);
+ 
+@@ -336,6 +443,7 @@ s32 cellFontOpenFontset(CellFontLibrary lib, CellFontType* fontType, CellFont* f
+     if (!slot) return CELL_FONT_ERROR_ALLOCATION_FAILED;
+ 
+     slot->type = want_type;
++    slot->is_fontset = 1;   /* Toro patch 7005 */
+ 
+     /* KZ3 patch 5005: the fontset is a chain of real font files (cellFontOutline.c). */
+     kz3_fontset_open((u32)(slot - s_fonts), want_type);
+@@ -356,10 +464,46 @@ s32 cellFontCloseFont(CellFont* font)
+     if (!slot) return CELL_FONT_ERROR_INVALID_PARAMETER;
+ 
+     kz3_fontset_close((u32)(slot - s_fonts));   /* KZ3 patch 5005 */
+-    if (slot->font_data_owned && slot->font_data)
+-        free(slot->font_data);
++    font_release_slot(slot);                     /* Toro patch 7005 */
++    return CELL_OK;
++}
+ 
+-    slot->in_use = 0;
++/* Toro patch 7005: cellFontOpenFontsetOnMemory(library, fontType, font), NID 0x073FA321. Same as cellFontOpenFontset
++ * with the font kept in memory rather than streamed; the port reads its fonts into memory either way. Toro EBOOT
++ * 0x14C5C4 calls it with the same three arguments it passes OpenFontset at 0x14C638 (r3 = library, r4 =
++ * CellFontType {type, map = 1} on the stack, r5 = the CellFont). */
++s32 cellFontOpenFontsetOnMemory(CellFontLibrary lib, CellFontType* fontType, CellFont* font)
++{
++    return cellFontOpenFontset(lib, fontType, font);
++}
++
++/* Toro patch 7005: cellFontOpenFontInstance(openedFont, font), NID 0x29329541: a second handle on an opened font with
++ * its own scale, effects and renderer binding, sharing the font data. Toro EBOOT 0x14C650 opens one instance of
++ * every font in its font list for each text object (r3 = the opened CellFont, r4 = a new zeroed 0x100-byte CellFont)
++ * and renders through the instance (object +0x114). Unimplemented, the instance kept handle 0. */
++s32 cellFontOpenFontInstance(CellFont* openedFont, CellFont* font)
++{
++    if (!s_font_initialized) return CELL_FONT_ERROR_UNINITIALIZED;
++    FontSlot* src = font_get_slot(openedFont);
++    if (!src || !font) return CELL_FONT_ERROR_INVALID_PARAMETER;
++    const FontSlot copy = *src;   /* font_alloc_slot clears the new slot only */
++    FontSlot* slot = font_alloc_slot();
++    if (!slot) return CELL_FONT_ERROR_ALLOCATION_FAILED;
++    slot->type           = copy.type;
++    slot->scale_x        = copy.scale_x;
++    slot->scale_y        = copy.scale_y;
++    slot->effect_weight  = copy.effect_weight;
++    slot->effect_slant   = copy.effect_slant;
++    slot->font_data      = copy.font_data;   /* borrowed: font_release_slot hands ownership over if needed */
++    slot->font_data_size = copy.font_data_size;
++    slot->font_data_owned = 0;
++    slot->is_fontset     = copy.is_fontset;
++#if FONT_HAS_STB
++    slot->stb_info  = copy.stb_info;
++    slot->stb_valid = copy.stb_valid;
++#endif
++    if (copy.is_fontset) kz3_fontset_open((u32)(slot - s_fonts), copy.type);
++    font_store(font, (u32)(slot - s_fonts), slot->type, slot->scale_x, slot->scale_y);
+     return CELL_OK;
+ }
+ 
+@@ -369,45 +513,48 @@ s32 cellFontSetFontOpenMode(u32 openMode)
+     return CELL_OK;
+ }
+ 
+-s32 cellFontCreateRenderer(CellFontLibrary lib, CellFontRenderer* renderer)
++/* Toro patch 7005: SDK renderer API. CellFontRenderer is a title-owned object (0x100 bytes in Toro: text object
++ * +0x04..+0x103, EBOOT 0x14C650), passed by address: cellFontCreateRenderer(library, config, renderer) (0x14C6C4: r3 =
++ * library, r4 = CellFontRendererConfig on the stack, r5 = obj + 4), cellFontBindRenderer(font, renderer) (0x14A898:
++ * r3 = the font instance, r4 = obj + 4), cellFontDestroyRenderer(renderer) (0x14B8F4: r3 = obj + 4). The old code took
++ * a 2-argument Create (writing an index into the config) and a renderer index elsewhere, with 4 renderers in all: the
++ * 5th text object failed with 0x80540005 and every bind with 0x80540002 (run tlp-7007). Rendering needs no renderer
++ * state here, so the object only carries a marker; the font remembers the renderer's address. */
++#define FONT_RENDERER_MAGIC 0x52454E44u   /* 'REND' at renderer +0 */
++s32 cellFontCreateRenderer(const CellFontLibrary* library, const void* config, CellFontRenderer* renderer)
+ {
+-    (void)lib;
++    (void)library; (void)config;
+     if (!s_font_initialized) return CELL_FONT_ERROR_UNINITIALIZED;
+     if (!renderer) return CELL_FONT_ERROR_INVALID_PARAMETER;
+-
+-    for (u32 i = 0; i < CELL_FONT_MAX_RENDERERS; i++) {
+-        if (!s_renderers[i].in_use) {
+-            s_renderers[i].in_use = 1;
+-            vm_write32(FONT_EA(renderer), i);
+-            return CELL_OK;
+-        }
+-    }
+-
+-    return CELL_FONT_ERROR_ALLOCATION_FAILED;
++    vm_write32(FONT_EA(renderer) + 0, FONT_RENDERER_MAGIC);
++    vm_write32(FONT_EA(renderer) + 4, FONT_EA(renderer));
++    return CELL_OK;
+ }
+ 
+-s32 cellFontDestroyRenderer(CellFontRenderer renderer)
++s32 cellFontDestroyRenderer(CellFontRenderer* renderer)
+ {
+     if (!s_font_initialized) return CELL_FONT_ERROR_UNINITIALIZED;
+-    if (renderer >= CELL_FONT_MAX_RENDERERS) return CELL_FONT_ERROR_INVALID_PARAMETER;
+-
+-    s_renderers[renderer].in_use = 0;
++    if (!renderer || vm_read32(FONT_EA(renderer)) != FONT_RENDERER_MAGIC) return CELL_FONT_ERROR_INVALID_PARAMETER;
++    for (int i = 0; i < CELL_FONT_MAX_OPENED; i++)   /* fonts still bound to it are unbound */
++        if (s_fonts[i].in_use && s_fonts[i].renderer == FONT_EA(renderer)) s_fonts[i].renderer = 0xFFFFFFFF;
++    vm_write32(FONT_EA(renderer) + 0, 0);
++    vm_write32(FONT_EA(renderer) + 4, 0);
+     return CELL_OK;
+ }
+ 
+-s32 cellFontBindRenderer(CellFont* font, CellFontRenderer renderer)
++s32 cellFontBindRenderer(CellFont* font, CellFontRenderer* renderer)
+ {
+     if (!s_font_initialized) return CELL_FONT_ERROR_UNINITIALIZED;
+ 
+     FontSlot* slot = font_get_slot(font);
+     if (!slot) return CELL_FONT_ERROR_INVALID_PARAMETER;
+-    if (renderer >= CELL_FONT_MAX_RENDERERS || !s_renderers[renderer].in_use)
++    if (!renderer || vm_read32(FONT_EA(renderer)) != FONT_RENDERER_MAGIC)
+         return CELL_FONT_ERROR_INVALID_PARAMETER;
+ 
+     if (slot->renderer != 0xFFFFFFFF)
+         return CELL_FONT_ERROR_RENDERER_ALREADY_BIND;
+ 
+-    slot->renderer = renderer;
++    slot->renderer = FONT_EA(renderer);
+     return CELL_OK;
+ }
+ 
+@@ -430,6 +577,8 @@ s32 kz3_font_set_scale_pixel(u32 font_ea, float w, float h)
+     FontSlot* slot = font_get_slot((CellFont*)(uintptr_t)font_ea);
+     if (!slot) return CELL_FONT_ERROR_INVALID_PARAMETER;
+ 
++    if (font_trace(FT_SCALE))
++        printf("[cellFont] SetScalePixel(handle=%d, %g, %g)\n", (int)(slot - s_fonts), (double)w, (double)h);
+     slot->scale_x = w;
+     slot->scale_y = h;
+     vm_write_f32(font_ea + FONT_O_SCALEX, w);
+@@ -469,14 +618,17 @@ s32 cellFontGetHorizontalLayout(CellFont* font, CellFontHorizontalLayout* layout
+ 
+ #if FONT_HAS_STB
+     if (slot->stb_valid) {
+-        float scale = font_get_stb_scale(slot);
+         int ascent, descent, lineGap;
+-        stbtt_GetFontVMetrics(&slot->stb_info, &ascent, &descent, &lineGap);
++        const float scale = font_face_metrics(&slot->stb_info, slot->scale_y, &ascent, &descent, &lineGap);
+         vm_write_f32(FONT_EA(layout) + LAY_O_BASELINEY, (float)ascent * scale);
+         vm_write_f32(FONT_EA(layout) + LAY_O_LINEHEIGHT,
+                      (float)(ascent - descent + lineGap) * scale);
+         vm_write_f32(FONT_EA(layout) + LAY_O_EFFECTHEIGHT,
+                      (float)(ascent - descent) * scale);
++        if (font_trace(FT_LAYOUT))
++            printf("[cellFont] GetHorizontalLayout(handle=%d scale=%g) baseLineY=%g lineHeight=%g effectHeight=%g\n",
++                   (int)(slot - s_fonts), (double)slot->scale_y, (double)((float)ascent * scale),
++                   (double)((float)(ascent - descent + lineGap) * scale), (double)((float)(ascent - descent) * scale));
+         return CELL_OK;
+     }
+ #endif
+@@ -485,6 +637,9 @@ s32 cellFontGetHorizontalLayout(CellFont* font, CellFontHorizontalLayout* layout
+     vm_write_f32(FONT_EA(layout) + LAY_O_BASELINEY,    slot->scale_y * 0.8f);
+     vm_write_f32(FONT_EA(layout) + LAY_O_LINEHEIGHT,   slot->scale_y * 1.2f);
+     vm_write_f32(FONT_EA(layout) + LAY_O_EFFECTHEIGHT, slot->scale_y);
++    if (font_trace(FT_LAYOUT))
++        printf("[cellFont] GetHorizontalLayout(handle=%d scale=%g) no face: fallback\n", (int)(slot - s_fonts),
++               (double)slot->scale_y);
+     return CELL_OK;
+ }
+ 
+@@ -503,19 +658,21 @@ static s32 font_metrics_host(CellFont* font, u32 code,
+ 
+ #if FONT_HAS_STB
+     if (slot->stb_valid) {
+-        float scale = font_get_stb_scale(slot);
+-        int glyph = stbtt_FindGlyphIndex(&slot->stb_info, (int)code);
+-        if (glyph == 0) {
++        /* Toro patch 7005: the face that has the glyph (a fontset searches its chain, not only its first file). */
++        stbtt_fontinfo face;
++        int glyph = 0;
++        if (!font_face_glyph(slot, code, &face, &glyph)) {
+             /* Glyph not found -- return space-like metrics */
+             metrics->h_advance = slot->scale_x * 0.5f;
+             return CELL_OK;
+         }
++        float scale = font_face_metrics(&face, slot->scale_y, NULL, NULL, NULL);
+ 
+         int advanceWidth, leftSideBearing;
+-        stbtt_GetGlyphHMetrics(&slot->stb_info, glyph, &advanceWidth, &leftSideBearing);
++        stbtt_GetGlyphHMetrics(&face, glyph, &advanceWidth, &leftSideBearing);
+ 
+         int x0, y0, x1, y1;
+-        stbtt_GetGlyphBitmapBox(&slot->stb_info, glyph, scale, scale, &x0, &y0, &x1, &y1);
++        stbtt_GetGlyphBitmapBox(&face, glyph, scale, scale, &x0, &y0, &x1, &y1);
+ 
+         metrics->width      = (float)(x1 - x0);
+         metrics->height     = (float)(y1 - y0);
+@@ -546,6 +703,10 @@ s32 cellFontGetRenderCharGlyphMetrics(CellFont* font, u32 code,
+     CellFontGlyphMetrics h;
+     s32 rc = font_metrics_host(font, code, &h);
+     if (rc == (s32)CELL_OK) font_metrics_store(metrics, &h);
++    if (font_trace(FT_METRICS))
++        printf("[cellFont] GetRenderCharGlyphMetrics(font=0x%08X, U+%04X) rc=0x%X w=%g h=%g bx=%g by=%g adv=%g\n",
++               FONT_EA(font), code, (unsigned)rc, (double)h.width, (double)h.height, (double)h.h_bearing_x,
++               (double)h.h_bearing_y, (double)h.h_advance);
+     return rc;
+ }
+ 
+@@ -639,5 +800,218 @@ done:
+ 
+ s32 cellFontSetupRenderScalePixel(CellFont* font, float w, float h)
+ {
+-    return cellFontSetScalePixel(font, w, h);
++    return kz3_font_setup_render_scale_pixel(FONT_EA(font), w, h);
++}
++
++/* Toro patch 7005: cellFontSetupRenderScalePixel(font, w, h) prepares the bound renderer for a scale; it is not
++ * cellFontSetScalePixel. Toro binds a renderer before every text draw and then calls it with w = h = 0.0
++ * (EBOOT 0x14A8A8: f1 = f2 = TOC-0x5248 = 0.0f); KZ3 patch 5005 mapped it onto SetScalePixel, so every Toro font's
++ * scale became 0 and all metrics, layouts and glyphs collapsed to zero size. ASSUMPTION: a positive w/h still sets
++ * the font's scale (what KZ3 relied on); 0 leaves it unchanged. Floats arrive in f1/f2, so cellFontOutline.c
++ * registers the context handler that calls this. */
++s32 kz3_font_setup_render_scale_pixel(u32 font_ea, float w, float h)
++{
++    if (!s_font_initialized) return CELL_FONT_ERROR_UNINITIALIZED;
++    FontSlot* slot = font_get_slot((CellFont*)(uintptr_t)font_ea);
++    if (!slot) return CELL_FONT_ERROR_INVALID_PARAMETER;
++    if (font_trace(FT_SETUP))
++        printf("[cellFont] SetupRenderScalePixel(handle=%d, %g, %g) scale stays %g x %g\n", (int)(slot - s_fonts),
++               (double)w, (double)h, (double)slot->scale_x, (double)slot->scale_y);
++    if (w > 0.0f && h > 0.0f) return kz3_font_set_scale_pixel(font_ea, w, h);
++    return CELL_OK;
++}
++
++/* ---------------------------------------------------------------------------
++ * Toro patch 7005: render surface + cellFontRenderCharGlyphImageHorizontal
++ *
++ * Guest CellFontRenderSurface, 0x24 bytes, big-endian (SURF_O_* above for the first five words):
++ *   +0x00 buffer EA, +0x04 widthByte (row stride), +0x08 pixelSizeByte, +0x0C width, +0x10 height,
++ *   +0x14 scissor x0, +0x18 y0, +0x1C x1, +0x20 y1 (u32 each; x1/y1 exclusive).
++ * Evidence: Toro EBOOT 0x14AA88 (and its twin 0x14AD30) builds a text texture object and calls
++ * cellFontRenderSurfaceInit(obj + 4, texture + 0x80, pixelSize * width, pixelSize, width, height); the object's next
++ * own field is +0x28 (the texture pointer it stored first), so the surface spans exactly obj+0x04..obj+0x27 = 0x24
++ * bytes: the five words above plus four scissor words. pixelSize is 4 (A8R8G8B8 texture, format 0xA5) or 2
++ * (A4R4G4B4, 0xA3), never 1. 0x14A9C8 keeps its own s16 copy of the scissor at obj+0x2C..0x32 and then calls
++ * cellFontRenderSurfaceSetScissor(obj + 4, x0, y0, w, h); the game never reads the surface's scissor words, so their
++ * encoding is private to this file. ASSUMPTION: stored as x0, y0, x0 + w, y0 + h clipped to the surface (the SDK
++ * names them x0, y0, x1, y1).
++ *
++ * Guest CellFontImageTransInfo, 0x18 bytes: +0x00 image EA (u8 coverage), +0x04 imageWidthByte (row stride),
++ * +0x08 imageWidth, +0x0C imageHeight, +0x10 surface EA (where the image's top-left pixel goes),
++ * +0x14 surfWidthByte. Evidence: Toro's own transfer loops 0x14A338 (32 bpp) and 0x14A410 (16 bpp) read exactly these
++ * words: for each of +0x0C rows and +0x08 columns, a non-zero coverage byte from +0x00 becomes the text colour with
++ * alpha = coverage * (colourAlpha + 1) >> 8, stored at +0x10 (stepping +0x14 bytes per row, +0x04 per source row).
++ * The caller 0x14BA34 keeps it at sp+0x7C and the CellFontGlyphMetrics right after it at sp+0x94 (0x18 apart).
++ * So with a transInfo the library does not write the surface itself: the title composites the coverage in its own
++ * pixel format. ASSUMPTION: without a transInfo the coverage byte is written into every byte of the pixel.
++ *
++ * Arguments: cellFontRenderCharGlyphImageHorizontal(font, code, surface, float x, float y, metrics, transInfo);
++ * 0x14BBE0 passes r3 font, r4 code, r5 surface, f1 x, f2 y, r8 metrics, r9 transInfo (the floats take the r6/r7
++ * slots). (x, y) is the glyph origin on the baseline: the caller passes y = scissor y0 + baseLineY of
++ * cellFontGetHorizontalLayout, and steps x by metrics +0x10 (Horizontal.advance). A zero metrics width for a code
++ * other than U+0020/U+3000, or an error, makes it redraw the code as '?'.
++ * The glyph is rasterised by stb_truetype at the scale the metrics functions use (font_face_metrics: the font's
++ * pixel scale over the face's OS/2 win cell; a fontset takes the first file of its chain that has the code), clipped to
++ * the scissor; effects (weight, slant) are not applied.
++ * -----------------------------------------------------------------------*/
++enum {
++    SURF_O_SC_X0 = 0x14, SURF_O_SC_Y0 = 0x18, SURF_O_SC_X1 = 0x1C, SURF_O_SC_Y1 = 0x20,
++    TI_O_IMAGE = 0x00, TI_O_IMAGEWB = 0x04, TI_O_IMAGEW = 0x08, TI_O_IMAGEH = 0x0C,
++    TI_O_SURFACE = 0x10, TI_O_SURFWB = 0x14
++};
++
++static s32 font_clamp(s32 v, s32 lo, s32 hi) { return v < lo ? lo : v > hi ? hi : v; }
++
++/* NID 0x90B9465E. void in the SDK; r3 = CELL_OK. */
++s32 cellFontRenderSurfaceInit(CellFontRenderSurface* surface, void* buffer, s32 bufferWidthByte,
++                              s32 pixelSizeByte, s32 w, s32 h)
++{
++    u32 ea = FONT_EA(surface);
++    if (!ea) return CELL_FONT_ERROR_INVALID_PARAMETER;
++    if (w < 0) w = 0;
++    if (h < 0) h = 0;
++    vm_write32(ea + SURF_O_BUFFER,    FONT_EA(buffer));
++    vm_write32(ea + SURF_O_WIDTHBYTE, (u32)bufferWidthByte);
++    vm_write32(ea + SURF_O_PIXELSIZE, (u32)pixelSizeByte);
++    vm_write32(ea + SURF_O_WIDTH,     (u32)w);
++    vm_write32(ea + SURF_O_HEIGHT,    (u32)h);
++    vm_write32(ea + SURF_O_SC_X0, 0);          /* default scissor: the whole surface */
++    vm_write32(ea + SURF_O_SC_Y0, 0);
++    vm_write32(ea + SURF_O_SC_X1, (u32)w);
++    vm_write32(ea + SURF_O_SC_Y1, (u32)h);
++    { static int n = 0;
++      if (n++ < 16)
++          printf("[cellFont] RenderSurfaceInit(0x%08X buf=0x%08X wb=%d px=%d %dx%d)\n", ea, FONT_EA(buffer),
++                 bufferWidthByte, pixelSizeByte, w, h); }
++    return CELL_OK;
++}
++
++/* NID 0xB422B005. void in the SDK; r3 = CELL_OK. */
++s32 cellFontRenderSurfaceSetScissor(CellFontRenderSurface* surface, s32 x0, s32 y0, s32 w, s32 h)
++{
++    u32 ea = FONT_EA(surface);
++    if (!ea) return CELL_FONT_ERROR_INVALID_PARAMETER;
++    s32 sw = (s32)vm_read32(ea + SURF_O_WIDTH), sh = (s32)vm_read32(ea + SURF_O_HEIGHT);
++    s64 x1 = (s64)x0 + (w > 0 ? w : 0), y1 = (s64)y0 + (h > 0 ? h : 0);
++    vm_write32(ea + SURF_O_SC_X0, (u32)font_clamp(x0, 0, sw));
++    vm_write32(ea + SURF_O_SC_Y0, (u32)font_clamp(y0, 0, sh));
++    vm_write32(ea + SURF_O_SC_X1, (u32)font_clamp((s32)(x1 > sw ? sw : x1), 0, sw));
++    vm_write32(ea + SURF_O_SC_Y1, (u32)font_clamp((s32)(y1 > sh ? sh : y1), 0, sh));
++    return CELL_OK;
++}
++
++static void font_transinfo_store(u32 ti, u32 image, u32 iwb, u32 iw, u32 ih, u32 surf, u32 swb)
++{
++    if (!ti) return;
++    vm_write32(ti + TI_O_IMAGE, image);
++    vm_write32(ti + TI_O_IMAGEWB, iwb);
++    vm_write32(ti + TI_O_IMAGEW, iw);
++    vm_write32(ti + TI_O_IMAGEH, ih);
++    vm_write32(ti + TI_O_SURFACE, surf);
++    vm_write32(ti + TI_O_SURFWB, swb);
++}
++
++static s32 font_render_horizontal(u32 font_ea, u32 code, u32 surf_ea, float x, float y,
++                                  u32 metrics_ea, u32 trans_ea)
++{
++    if (!s_font_initialized) return CELL_FONT_ERROR_UNINITIALIZED;
++    FontSlot* slot = font_get_slot((CellFont*)(uintptr_t)font_ea);
++    if (!slot || !surf_ea) return CELL_FONT_ERROR_INVALID_PARAMETER;
++
++    CellFontGlyphMetrics hm;
++    font_metrics_host((CellFont*)(uintptr_t)font_ea, code, &hm);
++    if (metrics_ea) font_metrics_store((CellFontGlyphMetrics*)(uintptr_t)metrics_ea, &hm);
++    /* An empty image unless a glyph lands inside the scissor: the title loops over these sizes. */
++    font_transinfo_store(trans_ea, 0, 0, 0, 0, 0, 0);
++    /* Diagnostic switch (default off): TLP_FONT_BLANK=1 keeps the metrics and hands out no glyph image, to tell a
++     * fault in the image path from one in the metrics. */
++    { static int blank = -1;
++      if (blank < 0) { const char* e = getenv("TLP_FONT_BLANK"); blank = (e && e[0] == '1') ? 1 : 0; }
++      if (blank) return CELL_OK; }
++
++    const u32 buf = vm_read32(surf_ea + SURF_O_BUFFER);
++    const s32 wb  = (s32)vm_read32(surf_ea + SURF_O_WIDTHBYTE);
++    const s32 px  = (s32)vm_read32(surf_ea + SURF_O_PIXELSIZE);
++    const s32 sw  = (s32)vm_read32(surf_ea + SURF_O_WIDTH);
++    const s32 sh  = (s32)vm_read32(surf_ea + SURF_O_HEIGHT);
++    const s32 cx0 = font_clamp((s32)vm_read32(surf_ea + SURF_O_SC_X0), 0, sw);
++    const s32 cy0 = font_clamp((s32)vm_read32(surf_ea + SURF_O_SC_Y0), 0, sh);
++    const s32 cx1 = font_clamp((s32)vm_read32(surf_ea + SURF_O_SC_X1), 0, sw);
++    const s32 cy1 = font_clamp((s32)vm_read32(surf_ea + SURF_O_SC_Y1), 0, sh);
++
++#if FONT_HAS_STB
++    if (!slot->stb_valid) return CELL_OK;
++    stbtt_fontinfo face;
++    int glyph = 0;
++    if (!font_face_glyph(slot, code, &face, &glyph)) return CELL_OK;
++    const float scale = font_face_metrics(&face, slot->scale_y, NULL, NULL, NULL);
++    if (!(scale > 0.0f)) return CELL_OK;
++    int bw = 0, bh = 0, bx = 0, by = 0;
++    u8* bitmap = stbtt_GetGlyphBitmap(&face, scale, scale, glyph, &bw, &bh, &bx, &by);
++    if (!bitmap) return CELL_OK;   /* a blank glyph (space) */
++
++    /* Bitmap top-left on the surface: origin (rounded to a pixel) plus stb's offsets (by < 0 is above the baseline). */
++    const s32 ox = (s32)floorf(x + 0.5f) + bx, oy = (s32)floorf(y + 0.5f) + by;
++    const s32 x0 = ox > cx0 ? ox : cx0, y0 = oy > cy0 ? oy : cy0;
++    const s32 x1 = ox + bw < cx1 ? ox + bw : cx1, y1 = oy + bh < cy1 ? oy + bh : cy1;
++    s32 rc = CELL_OK;
++    if (x1 > x0 && y1 > y0) {
++        const u32 cw = (u32)(x1 - x0), ch = (u32)(y1 - y0);
++        if (trans_ea) {
++            if (slot->img_cap < cw * ch) {
++                tlp_font_pool_free(slot->img_ea);
++                slot->img_ea = tlp_font_pool_alloc(cw * ch, &slot->img_cap);
++            }
++            if (!slot->img_ea) {
++                slot->img_cap = 0;
++                rc = CELL_FONT_ERROR_ALLOCATION_FAILED;
++            } else {
++                for (u32 r = 0; r < ch; r++)
++                    memcpy(vm_base + slot->img_ea + r * cw,
++                           bitmap + (size_t)(y0 - oy + (s32)r) * (size_t)bw + (size_t)(x0 - ox), cw);
++                font_transinfo_store(trans_ea, slot->img_ea, cw, cw, ch,
++                                     buf ? buf + (u32)(y0 * wb + x0 * px) : 0, (u32)wb);
++            }
++        } else if (buf && px > 0) {
++            for (u32 r = 0; r < ch; r++) {
++                const u8* src = bitmap + (size_t)(y0 - oy + (s32)r) * (size_t)bw + (size_t)(x0 - ox);
++                u8* dst = vm_base + buf + (u32)((y0 + (s32)r) * wb + x0 * px);
++                for (u32 c = 0; c < cw; c++, dst += px)
++                    if (src[c] > dst[0]) memset(dst, src[c], (size_t)px);   /* max: neighbours may overlap */
++            }
++        }
++    }
++    stbtt_FreeBitmap(bitmap, NULL);
++    return rc;
++#else
++    (void)x; (void)y; (void)buf; (void)wb; (void)px; (void)cx0; (void)cy0; (void)cx1; (void)cy1;
++    return CELL_OK;
++#endif
++}
++
++/* NID 0x1A218FE4 cellFontRenderCharGlyphImageHorizontal: floats in f1/f2, so a context handler (it takes precedence
++ * over the flat table, like cellFontSetScalePixel in cellFontOutline.c). */
++static void hle_render_char_glyph_image_horizontal(ppu_context* ctx)
++{
++    const u32 font = (u32)ctx->gpr[3], code = (u32)ctx->gpr[4], surf = (u32)ctx->gpr[5], ti = (u32)ctx->gpr[9];
++    const float x = (float)ctx->fpr[1], y = (float)ctx->fpr[2];
++    const s32 rc = font_render_horizontal(font, code, surf, x, y, (u32)ctx->gpr[8], ti);
++    ctx->gpr[3] = (u64)(s64)rc;
++    if (font_trace(FT_RENDER) && surf)
++        printf("[cellFont] RenderCharGlyphImageHorizontal(font=0x%08X U+%04X x=%g y=%g lr=0x%08X) rc=0x%X surface"
++               "{buf=0x%08X wb=%u px=%u %ux%u sc=%u,%u-%u,%u} image{0x%08X wb=%u %ux%u -> 0x%08X wb=%u}\n",
++               font, code, (double)x, (double)y, (uint32_t)ctx->lr, (unsigned)rc,
++               vm_read32(surf + SURF_O_BUFFER), vm_read32(surf + SURF_O_WIDTHBYTE), vm_read32(surf + SURF_O_PIXELSIZE),
++               vm_read32(surf + SURF_O_WIDTH), vm_read32(surf + SURF_O_HEIGHT), vm_read32(surf + SURF_O_SC_X0),
++               vm_read32(surf + SURF_O_SC_Y0), vm_read32(surf + SURF_O_SC_X1), vm_read32(surf + SURF_O_SC_Y1),
++               ti ? vm_read32(ti + TI_O_IMAGE) : 0, ti ? vm_read32(ti + TI_O_IMAGEWB) : 0,
++               ti ? vm_read32(ti + TI_O_IMAGEW) : 0, ti ? vm_read32(ti + TI_O_IMAGEH) : 0,
++               ti ? vm_read32(ti + TI_O_SURFACE) : 0, ti ? vm_read32(ti + TI_O_SURFWB) : 0);
++}
++
++extern void ps3_hle_register_ctx(uint32_t nid, const char* name, void (*fn)(ppu_context*));
++__attribute__((constructor)) static void tlp_font_register(void)
++{
++    ps3_hle_register_ctx(ps3_compute_nid("cellFontRenderCharGlyphImageHorizontal"),
++                         "cellFontRenderCharGlyphImageHorizontal", hle_render_char_glyph_image_horizontal);
+ }
+diff --git a/libs/font/cellFontOutline.c b/libs/font/cellFontOutline.c
+--- a/libs/font/cellFontOutline.c
++++ b/libs/font/cellFontOutline.c
+@@ -43,6 +43,7 @@
+ 
+ /* Defined in cellFont.c. */
+ s32 kz3_font_set_scale_pixel(u32 font_ea, float w, float h);
++s32 kz3_font_setup_render_scale_pixel(u32 font_ea, float w, float h);   /* Toro patch 7005 */
+ int kz3_font_slot_stb(u32 handle, stbtt_fontinfo* out);
+ 
+ /* ---- guest pool ---------------------------------------------------------------------------------------------- */
+@@ -112,6 +113,17 @@ static void pool_free(u32 ea)
+     unlock();
+ }
+ 
++/* Toro patch 7005: the same pool holds the glyph images cellFontRenderCharGlyphImageHorizontal hands the title
++ * (cellFont.c). Returns the block's EA (0 when the pool is full) and its capacity in bytes. */
++u32 tlp_font_pool_alloc(u32 bytes, u32* cap_out)
++{
++    int bin = 0;
++    u32 ea = pool_alloc(bytes, &bin);
++    if (cap_out) *cap_out = ea ? (1u << bin) : 0;
++    return ea;
++}
++void tlp_font_pool_free(u32 ea) { if (ea) pool_free(ea); }
++
+ /* ---- faces and chains ---------------------------------------------------------------------------------------- */
+ typedef struct {
+     char            path[600];
+@@ -487,9 +499,27 @@ static void hle_set_scale_pixel(ppu_context* ctx)
+     ctx->gpr[3] = (u64)(s64)kz3_font_set_scale_pixel((u32)ctx->gpr[3], (float)ctx->fpr[1], (float)ctx->fpr[2]);
+ }
+ 
++/* Toro patch 7005: cellFontSetupRenderScalePixel is not SetScalePixel (see cellFont.c). */
++static void hle_setup_render_scale_pixel(ppu_context* ctx)
++{
++    ctx->gpr[3] = (u64)(s64)kz3_font_setup_render_scale_pixel((u32)ctx->gpr[3], (float)ctx->fpr[1], (float)ctx->fpr[2]);
++}
++
++/* Toro patch 7005: the face and glyph that draw `code` for a font handle, for cellFont.c's metrics and bitmaps
++ * (fontsets search their whole chain, as the outline functions do). 1 and *out filled when found. */
++int tlp_font_find_glyph(u32 handle, u32 code, int* glyph, stbtt_fontinfo* out)
++{
++    stbtt_fontinfo tmp;
++    const stbtt_fontinfo* info = find_glyph(handle, code, glyph, &tmp);
++    if (!info) return 0;
++    *out = *info;
++    return 1;
++}
++
+ extern void ps3_hle_register_ctx(uint32_t nid, const char* name, void (*fn)(ppu_context*));
+ __attribute__((constructor)) static void kz3_font_register(void)
+ {
+     ps3_hle_register_ctx(ps3_compute_nid("cellFontSetScalePixel"), "cellFontSetScalePixel", hle_set_scale_pixel);
+-    ps3_hle_register_ctx(ps3_compute_nid("cellFontSetupRenderScalePixel"), "cellFontSetupRenderScalePixel", hle_set_scale_pixel);
++    ps3_hle_register_ctx(ps3_compute_nid("cellFontSetupRenderScalePixel"), "cellFontSetupRenderScalePixel",
++                         hle_setup_render_scale_pixel);   /* Toro patch 7005: was hle_set_scale_pixel */
+ }

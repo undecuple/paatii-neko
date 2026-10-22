@@ -1,0 +1,59 @@
+Live draw: small local-memory colour surfaces are written back to guest memory at guest sync points (like main-memory
+surfaces since patch 2017), so the CPU reads the luminance the GPU computed. Toro's own patch (7xxx).
+What: rsx_live_draw_before_guest_sync (NV4097 semaphore release, NV406E release, flip) now also writes back every
+location-0 surface the GPU drew since its last write-back whose guest span is at most LD_LOCAL_WB_MAX bytes (default
+65536). Logs "[local-writeback] max N bytes (LD_LOCAL_WB_MAX)" once and the first 4 surfaces written.
+Why (runs tlp-7002, tlp-ovx, the RE notes "title overexposure, per-draw inputs"): the title's GPU
+post chain executes the game's commands exactly (bloom threshold 0.6, 16 weights summing 1.2 per draw, two draws,
+added with CONSTANT_ALPHA 0xFE/255; the dumps match that arithmetic to 0.01), so the excess comes from the scene's
+own level. Every scene shader ends with a multiply by an exposure constant (1.25 in all 518 scene draws of frame 585:
+c17.w / c25.w / c2.w) before the RGBM encode. The frame reduces the scene's luminance through 0x04790000 into one
+texel of the 16x16 FP16 surface 0:0x013A0000 (draws 538-542, quads shrinking to one texel, position moving per
+frame); no GPU draw reads that surface and no NV0039 copy moves it (no [NV0039] lines, SPU_DMAW on
+0xC13A0000-0xC13B0000: no SPU DMA), so only the CPU can consume it, through the local mapping 0xC0000000+offset.
+live-draw never wrote local surfaces back, so the CPU read stale bytes and the exposure stuck at its limit.
+ASSUMPTION: the CPU reads 0x013A0000 for the exposure (inferred from the above, not yet observed); verify below.
+Switch: LD_LOCAL_WB_MAX=0 = old behaviour (main memory only).
+Verify: build; run to the title. "[local-writeback] surface 0:0x013A0000 16x16 span 7808" appears; the title scene is
+no longer blown out; with RSX_DRAW_CSV + RSX_DRAW_CSV_GATE + LD_DRAW_DUMP + LD_DRAW_INPUTS=0:0-600 the scene
+shaders' exposure constant (fp off 0x0909C900 c17.w) differs from 1.25 and follows the scene. If the title is
+unchanged and c17.w stays 1.25, the CPU does not read this surface: revert and watch PPU reads of 0xC13A0000.
+
+diff --git a/libs/video/rsx_live_draw.c b/libs/video/rsx_live_draw.c
+--- a/libs/video/rsx_live_draw.c
++++ b/libs/video/rsx_live_draw.c
+@@ -15673,10 +15673,32 @@ u32 rsx_live_draw_before_guest_sync(void)
+     static int en = -1;
+     if (en < 0) { const char* e = getenv("LD_MAIN_SURFACE_WRITEBACK"); en = e ? atoi(e) : 1; }
+     if (!en || !g.ready) return 0;
++    /* Patch 7003 (Toro): small LOCAL-memory surfaces too. Toro's post chain reduces the scene's luminance into
++     * one texel of the 16x16 FP16 surface 0:0x013A0000 (draws into it that sample it, texel position moving per
++     * frame) and no GPU draw or NV0039 copy ever reads that surface: the CPU reads it through the local-memory
++     * mapping (EA 0xC0000000 + offset) to set the exposure it bakes into every scene shader's last multiply.
++     * live-draw left those bytes stale in guest memory. A surface whose guest span is at most LD_LOCAL_WB_MAX
++     * bytes (default 65536; 0 = main memory only, the old rule) is written back at the same sync points; large
++     * local targets (scene, bloom chain) stay on the GPU, so the cost is one small readback per frame. */
++    static u32 local_max = ~0u;
++    if (local_max == ~0u) { const char* e = getenv("LD_LOCAL_WB_MAX"); local_max = e ? (u32)strtoul(e, NULL, 0) : 65536u;
++                            fprintf(stderr, "[local-writeback] max %u bytes (LD_LOCAL_WB_MAX)\n", local_max); }
+     u32 idx[64], n = 0;
+-    for (u32 i = 0; i < g.n_surfaces && n < 64; i++)
+-        if (g.surfaces[i].tex && g.surfaces[i].location == 1u && g.surfaces[i].gv_gpu_dirty)
++    for (u32 i = 0; i < g.n_surfaces && n < 64; i++) {
++        const surface_t* sf = &g.surfaces[i];
++        if (!sf->tex || !sf->gv_gpu_dirty) continue;
++        if (sf->location == 1u) { idx[n++] = i; continue; }
++        if (!local_max || sf->location != 0u || !sf->w || !sf->h) continue;
++        const u32 texel = sf->fmt == DXGI_FORMAT_R16G16B16A16_FLOAT ? 8u : 4u;
++        const u64 span = (u64)(sf->pitch ? sf->pitch : sf->w * texel) * (sf->h - 1u) + (u64)sf->w * texel;
++        if (span <= local_max) {
+             idx[n++] = i;
++            static u32 nlog;
++            if (nlog++ < 4)
++                fprintf(stderr, "[local-writeback] surface %u:0x%08X %ux%u span %llu (frame %u)\n", sf->location,
++                        sf->offset, sf->w, sf->h, (unsigned long long)span, g_ld_frames);
++        }
++    }
+     if (!n) return 0;
+     LDW_T0(wb_t0);
+     const u32 done = ld_writeback_batch(idx, n, 0, 0);   /* patch 2018: one GPU wait */

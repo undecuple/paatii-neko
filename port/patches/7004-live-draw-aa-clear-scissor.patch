@@ -1,0 +1,38 @@
+Live draw: CLEAR_SURFACE scales the guest scissor to the sample grid of an antialiased surface, as draws do.
+Toro's own patch (7xxx).
+What: sink_clear_impl intersects the clear with the surface clip and the guest scissor (patch 2006). The clip from
+rsx_dsp_get_surface is in samples (x aa_sx/aa_sy, KZ3 patch 2016) but the scissor was used in pixels; the draw path
+already multiplies it (rsx_live_draw.c "The scissor is in pixels too: scale it to the sample grid"). The clear now
+multiplies the scissor by aa_sx/aa_sy too, for the colour and the depth/stencil clear.
+Why (run tlp-book, frame 3379-3381, work/book/, the RE notes "Story memory book"): every frame
+clears 0x01FB0000 (SURFACE_FORMAT 0xA0B5148, antialias 5, 2560x1440 samples used of a 5120x2880 host surface) with
+mask 0xF3 and scissor 0x05000000/0x02D00000 (1280x720 pixels). Unscaled, colour and depth were cleared only in the
+top-left 1280x720 samples. The book page (fp 0x090751C0, 54 verts, texture 1:0x05EEA880 1280x720) and the photo
+quad are drawn full screen with depth test LESS (z/w ~0.55): they appear inside the cleared quarter and fail against
+the title scene's stale depth everywhere else, where the title's colour also stays. The downsample (2560x1440 window,
+patch 7002) then shows the book in the top-left quarter of the frame and the old title scene around it; the same
+stale scene sits behind the main menu and the loading screen. The title itself redraws every sample (sky), so it
+never showed.
+Switch: none (LD_CLEAR_NO_SCISSOR=1 still disables the clear scissor entirely).
+Verify: build; run to the Story memory book: the book fills the screen, no title streamers/characters behind the
+main menu, loading screen or book. The title screen is unchanged (alias-subrect window 2560x1440 still used).
+
+diff --git a/libs/video/rsx_live_draw.c b/libs/video/rsx_live_draw.c
+--- a/libs/video/rsx_live_draw.c
++++ b/libs/video/rsx_live_draw.c
+@@ -13658,8 +13658,13 @@
+           if (g.rsx.seen[M_SCISSOR_HORIZONTAL >> 2] || g.rsx.seen[M_SCISSOR_VERTICAL >> 2]) {
+               const u32 sh = rsx_dsp_reg(&g.rsx, M_SCISSOR_HORIZONTAL);
+               const u32 sv = rsx_dsp_reg(&g.rsx, M_SCISSOR_VERTICAL);
+-              const LONG sx = (LONG)(sh & 0xFFFFu), sw = (LONG)(sh >> 16);
+-              const LONG sy = (LONG)(sv & 0xFFFFu), svh = (LONG)(sv >> 16);
++              /* Patch 7004 (Toro): the scissor is in pixels, the clip of an antialiased surface in samples
++               * (rsx_dsp_get_surface); scale it to the sample grid as the draw path does. Unscaled, the
++               * clear of Toro's 2x2-sample scene surface 0x01FB0000 (1280x720 scissor, 2560x1440 samples)
++               * reached only its top-left quarter, leaving the previous scene's colour and depth outside. */
++              const LONG ax = csf.aa_sx ? (LONG)csf.aa_sx : 1, ay = csf.aa_sy ? (LONG)csf.aa_sy : 1;
++              const LONG sx = (LONG)(sh & 0xFFFFu) * ax, sw = (LONG)(sh >> 16) * ax;
++              const LONG sy = (LONG)(sv & 0xFFFFu) * ay, svh = (LONG)(sv >> 16) * ay;
+               if (sx > l) l = sx;
+               if (sy > t) t = sy;
+               if (sx + sw < r) r = sx + sw;

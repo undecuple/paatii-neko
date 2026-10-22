@@ -1,0 +1,88 @@
+cellPad: report CELL_PAD_STATUS_ASSIGN_CHANGES after a connection change.
+Toro's own patch (7xxx), candidate for upstream.
+What: GetInfo, GetInfo2 and PeriphGetInfo add ASSIGN_CHANGES (0x2) to a port's status the first time they report it
+after the port connected or disconnected (the first connect after cellPadInit too), then clear it, as the console does.
+Why: the port status was CONNECTED only. Toro Lets Party's pad manager (func_001A7990) calls cellPadSetPortSetting,
+with SENSOR_ON when the game wants motion, only when a port shows CONNECTED | ASSIGN_CHANGES, so it never set sensor
+mode, GetData stayed at len 8, and the first minigame (Flap your wings! Chick!) scored 0 cm (runs tlp-game1/game2:
+no SetPortSetting call in 420-500 s).
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+--- a/libs/input/cellPad.c	2026-10-20 22:58:15.589279014 -0500
++++ b/libs/input/cellPad.c	2026-10-20 22:58:15.602961974 -0500
+@@ -62,6 +62,22 @@
+ static int          s_pad_initialized = 0;
+ static u32           s_max_connect = 0;
+ static u32           s_port_setting[CELL_PAD_MAX_PORT_NUM];
++
++/* CELL_PAD_STATUS_ASSIGN_CHANGES: the console sets it with the next port status after a port connects or disconnects
++ * (the first connect after cellPadInit included) and clears it once GetInfo, GetInfo2 or PeriphGetInfo has reported it.
++ * Titles reconfigure a port only on that bit: Toro! Let's Party! calls cellPadSetPortSetting (sensor and press mode)
++ * when it sees CONNECTED | ASSIGN_CHANGES, so without it the game never turns the motion sensor on. */
++static u8            s_status_on[CELL_PAD_MAX_PORT_NUM];      /* connection state last reported */
++static u8            s_assign_pending[CELL_PAD_MAX_PORT_NUM];
++
++static u32 pad_report_status(u32 port, int on)
++{
++    if ((u8)on != s_status_on[port]) { s_status_on[port] = (u8)on; s_assign_pending[port] = 1; }
++    u32 st = (on ? CELL_PAD_STATUS_CONNECTED : CELL_PAD_STATUS_DISCONNECTED)
++           | (s_assign_pending[port] ? CELL_PAD_STATUS_ASSIGN_CHANGES : 0);
++    s_assign_pending[port] = 0;
++    return st;
++}
+ static PadHostState  s_host_state[PAD_MAX_HOST_PORTS];
+ /* Per-port "a report has arrived since your last read" flag; see cellPadGetData. */
+ static int s_data_fresh[PAD_MAX_HOST_PORTS];
+@@ -931,6 +947,8 @@
+     s_pad_initialized = 1;
+     s_max_connect = max_connect > CELL_PAD_MAX_PORT_NUM ? CELL_PAD_MAX_PORT_NUM : max_connect;
+     memset(s_port_setting, 0, sizeof(s_port_setting));
++    memset(s_status_on, 0, sizeof(s_status_on));
++    memset(s_assign_pending, 0, sizeof(s_assign_pending));
+     memset(s_host_state, 0, sizeof(s_host_state));
+ 
+     pad_init_backend();
+@@ -1529,7 +1547,7 @@
+                   (s_host_state[i].connected || i == 0));
+         vm_write16(gaddr + 0x00C + i * 2, on ? 0x054C : 0);   /* vendor: Sony  */
+         vm_write16(gaddr + 0x10A + i * 2, on ? 0x0268 : 0);   /* product: DS3  */
+-        vm_write8(gaddr + 0x208 + i, on ? CELL_PAD_STATUS_CONNECTED : 0);
++        vm_write8(gaddr + 0x208 + i, (u8)pad_report_status(i, on));
+     }
+     return CELL_OK;
+ }
+@@ -1556,7 +1574,7 @@
+          * boot flows that block until a controller is connected can proceed even
+          * with no physical device attached. */
+         if (s_host_state[i].connected || i == 0) {
+-            info->port_status[i]       = CELL_PAD_STATUS_CONNECTED;
++            info->port_status[i]       = pad_report_status(i, 1);
+             info->port_setting[i]      = s_port_setting[i];
+             info->device_capability[i] = CELL_PAD_CAPABILITY_PS3_CONFORMITY
+                                        | CELL_PAD_CAPABILITY_PRESS_MODE
+@@ -1566,7 +1584,7 @@
+             info->device_type[i]       = CELL_PAD_DEV_TYPE_STANDARD;
+             connected++;
+         } else {
+-            info->port_status[i] = CELL_PAD_STATUS_DISCONNECTED;
++            info->port_status[i] = pad_report_status(i, 0);
+         }
+     }
+     info->now_connect = connected;
+@@ -1611,7 +1629,7 @@
+         /* Same virtual-pad-on-port-0 rule as cellPadGetInfo2, so both views of
+          * the ports agree (a game that cross-checks them must see one truth). */
+         if ((i < PAD_MAX_HOST_PORTS && s_host_state[i].connected) || i == 0) {
+-            info->port_status[i]       = CELL_PAD_STATUS_CONNECTED;
++            info->port_status[i]       = pad_report_status(i, 1);
+             info->port_setting[i]      = s_port_setting[i];
+             info->device_capability[i] = CELL_PAD_CAPABILITY_PS3_CONFORMITY
+                                        | CELL_PAD_CAPABILITY_PRESS_MODE
+@@ -1623,7 +1641,7 @@
+             info->pclass_profile[i]    = 0;
+             connected++;
+         } else {
+-            info->port_status[i] = CELL_PAD_STATUS_DISCONNECTED;
++            info->port_status[i] = pad_report_status(i, 0);
+         }
+     }
+     info->now_connect = connected;

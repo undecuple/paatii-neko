@@ -1,0 +1,2 @@
+# PPU functions the host replaces (ps3recomp ppu_lifter.py --overrides, patch 1018).
+# Their lifted bodies become func_<addr>__lifted; the port defines func_<addr>. None yet.

@@ -1,0 +1,38 @@
+{
+ "format": 1,
+ "generator_sha256": "1c7a3b3241d9fdfcb05dd8ef25251d5e1f81aa7b887cbaf335d5dffff46f8d64",
+ "fonts_sha256": {
+  "Baloo2[wght].ttf": "d47a6852548059b1db49a1319d06d499d546c3fa2237cf9eee9c43c8abb025c2",
+  "LilitaOne-Regular.ttf": "f5b641c45c69d772ee4eda687bc9fda411d5cad6b0b45371491da4580cbc8d59",
+  "MPLUSRounded1c-ExtraBold.ttf": "8e7c15901dca87f1451b356dda594f7d092ba252a5dcc47da74523a242493c36"
+ },
+ "fonts_source": "https://raw.githubusercontent.com/google/fonts/main/ofl/",
+ "pillow": "12.3.0",
+ "freetype": "2.14.3",
+ "files": {
+  "banner.png": {
+   "size": [
+    1280,
+    320
+   ],
+   "bytes": 179511,
+   "sha256": "0d1e42812b7eacd6772e8846a87a7fbeff62d30f5475309ffed72d0fea880bca"
+  },
+  "banner@2x.png": {
+   "size": [
+    2560,
+    640
+   ],
+   "bytes": 377596,
+   "sha256": "b106fb377d6df7a79625f5921e14fea3f3d99e6c9940a4a28cf9d489230036f0"
+  },
+  "social-preview.png": {
+   "size": [
+    1280,
+    640
+   ],
+   "bytes": 112386,
+   "sha256": "56ac003c4afabbbb4b47b65ac80f12e1826e694d8d8a50a932b032dc1971868a"
+  }
+ }
+}

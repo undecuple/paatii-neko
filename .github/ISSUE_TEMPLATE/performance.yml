@@ -1,0 +1,43 @@
+name: Performance report
+description: Low frame rate, stutter or audio crackle in a specific place
+labels: [performance, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reports that help: a minigame or menu that is much slower than the rest, or a change between builds. Please do **not** attach game files, keys, firmware, decrypted binaries, saves or memory dumps.
+  - type: textarea
+    id: where
+    attributes:
+      label: What you see
+      description: "What is on screen, the frame rate you see, stutter or steady slowness."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Port build
+      description: "Release number, or the commit (`git rev-parse --short HEAD`) of the build you ran."
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: "OS (Windows version, or Linux distribution and Proton version), CPU, GPU and driver version."
+    validations:
+      required: true
+  - type: input
+    id: where_in_game
+    attributes:
+      label: Minigame or menu
+      description: "Which minigame or menu, and how long after it started."
+  - type: input
+    id: ram
+    attributes:
+      label: RAM and CPU threads
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log excerpt
+      description: "Paste the relevant lines of the run's log. Before posting, remove your user name, home folder paths and any host name. Never attach game files, keys, firmware, decrypted binaries, saves or dumps."

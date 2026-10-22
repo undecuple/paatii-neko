@@ -1,0 +1,56 @@
+cellPad: a stick stands in for the SIXAXIS on a pad without motion (ENHANCEMENT, Toro ).
+Toro's own patch (7xxx); port-specific.
+What: when the game has set sensor mode and the pad has no accelerometer (XInput, SDL pads without motion, keyboard),
+cellPadGetData fills the sensor words from the right stick: up or down raises Y above its gravity rest 399 (a flick and
+release is one swing), left/right moves X around 512; Z and the gyro stay at rest. TLP_MOTION_STICK=0 turns it off. A pad
+with real motion keeps its own values.
+Why: the motion minigames (first: Flap your wings! Chick!, "swing controller up/down") cannot be played on pads without
+motion. The scale comes from the chick script's flap test (Y arms at +50 and counts at -50 around 512).
+diff --git a/libs/input/pad_host.h b/libs/input/pad_host.h
+--- a/libs/input/pad_host.h	2026-10-20 23:37:52.998933265 -0500
++++ b/libs/input/pad_host.h	2026-10-20 23:38:06.917339203 -0500
+@@ -190,6 +190,18 @@
+     hs->sensor_z = pad_sensor_word((float)hs->sensor_z - 1.0f);
+ }
+ 
++/* ENHANCEMENT (D10): a stick stands in for the SIXAXIS on a pad without motion (XInput, SDL pads without an
++ * accelerometer, keyboard). Stick up or down raises Y above its gravity rest 399 by up to 408 words (3.6 g, 113 per g),
++ * so a flick either way and back is one swing: the chick minigame arms at Y >= 562 and counts on Y <= 462 (its script,
++ * 0xFF6E), i.e. at 40% deflection and on release. Left/right moves X around 512; Z and the gyro stay at rest. */
++static inline void pad_stick_motion(u8 sx, u8 sy, PadHostState* hs)
++{
++    hs->sensor_x = pad_sensor_word(512.0f + 226.0f * ((int)sx - 128) / 127.0f);
++    hs->sensor_y = pad_sensor_word(399.0f + 408.0f * ((int)sy < 128 ? 128 - (int)sy : (int)sy - 128) / 127.0f);
++    hs->sensor_z = 512;
++    hs->sensor_g = 512;
++}
++
+ /* DS3 actuators: motor[SMALL] is on/off (0 or 1, any non-zero counts), motor[LARGE] is 0-255. SDL's low-frequency
+  * motor is the large one. */
+ static inline void pad_act_to_rumble(const u8 motor[CELL_PAD_ACTUATOR_MAX], unsigned short* low, unsigned short* high)
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+--- a/libs/input/cellPad.c	2026-10-20 23:37:52.996933220 -0500
++++ b/libs/input/cellPad.c	2026-10-20 23:38:06.918397070 -0500
+@@ -1489,10 +1489,22 @@
+     if (setting & CELL_PAD_SETTING_SENSOR_ON) {
+         /* 4010: the pad's accelerometer and gyro where it has them (pad_sdl_sensors); otherwise a DS3 at rest
+          * (512 = 0 g, Y 399 = gravity, gyro 512 = still). */
++        /* 7017 (D10): without a motion sensor the right stick stands in; TLP_MOTION_STICK=0 keeps a DS3 at rest. */
++        static int motion_stick = -1;
++        if (motion_stick < 0) { const char* e = getenv("TLP_MOTION_STICK"); motion_stick = !(e && e[0] == '0'); }
++        if (!hs->has_sensor && motion_stick) {
++            PadHostState ms = *hs;
++            pad_stick_motion(hs->analog_rx, hs->analog_ry, &ms);
++            data->button[CELL_PAD_BTN_OFFSET_SENSOR_X] = ms.sensor_x;
++            data->button[CELL_PAD_BTN_OFFSET_SENSOR_Y] = ms.sensor_y;
++            data->button[CELL_PAD_BTN_OFFSET_SENSOR_Z] = ms.sensor_z;
++            data->button[CELL_PAD_BTN_OFFSET_SENSOR_G] = ms.sensor_g;
++        } else {
+         data->button[CELL_PAD_BTN_OFFSET_SENSOR_X] = hs->has_sensor ? hs->sensor_x : 512;
+         data->button[CELL_PAD_BTN_OFFSET_SENSOR_Y] = hs->has_sensor ? hs->sensor_y : 399;
+         data->button[CELL_PAD_BTN_OFFSET_SENSOR_Z] = hs->has_sensor ? hs->sensor_z : 512;
+         data->button[CELL_PAD_BTN_OFFSET_SENSOR_G] = hs->has_sensor ? hs->sensor_g : 512;
++        }
+     }
+     }  /* end connected block */
+ 

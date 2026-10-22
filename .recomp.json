@@ -1,0 +1,24 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "Toro! Let's Party!",
+  "system": "PS3",
+  "type": "recomp",
+  "original": {
+    "region": "Asia",
+    "serial": "BCAS20087",
+    "revision": "01.00"
+  },
+  "project": "Paatii Neko!",
+  "status": "in-progress",
+  "targets": ["PC (Windows)"],
+  "toolchain": ["ps3recomp"],
+  "approach": "Static recompilation of the PPU and SPU code to C with ps3recomp, HLE system libraries, Direct3D 12 RSX backend",
+  "maintainers": [{"name": "undecuple", "link": "https://github.com/undecuple"}],
+  "links": [
+    {"label": "Status", "url": "https://github.com/undecuple/paatii-neko#status"},
+    {"label": "Building", "url": "https://github.com/undecuple/paatii-neko#building"}
+  ],
+  "help": ["Testing on real Windows", "Testing the motion minigames with a DualShock 3"],
+  "tags": ["cell", "spurs", "d3d12", "sixaxis"],
+  "notes": "Needs your own copy of the game (a disc dump of BCAS20087 and its decrypted main program); the build happens on your PC. The title screen, menus, the Story into episode 2 and the first minigame run; the other minigames are untested."
+}

@@ -1,0 +1,29 @@
+# CI without the game: the exe cannot be built here (the lifted code comes from the player's own copy of the game and
+# is never committed), so this checks what needs no game data: scripts parse, every patch applies to the pinned
+# ps3recomp, and the self-contained host test runs. Only the checkout action is used, pinned to a full commit SHA (v7.0.1).
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: true
+      - name: Shell scripts parse
+        run: git ls-files -z '*.sh' | xargs -0 -n1 bash -n
+      - name: Python scripts compile
+        run: git ls-files -z 'tools/*.py' 'port/*.py' | xargs -0 python3 -I -m py_compile
+      - name: Patches apply to the pinned ps3recomp
+        run: bash tools/ps3recomp-patched.sh
+      - name: Host test (fake PE files only)
+        run: python3 tools/release/test_stage_sdl3.py

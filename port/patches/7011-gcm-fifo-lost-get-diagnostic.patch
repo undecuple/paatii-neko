@@ -1,0 +1,50 @@
+cellGcmSys diagnostic: when the FIFO walker's get lands on an unmapped IO offset, say how it got there.
+Toro's own patch (7xxx), diagnostic only (no behaviour change).
+What: on the first 4 "FIFO get=... has no IO mapping -- resyncing" events, one "[fifo-lost]" line with get, put,
+the CALL return slot, how many of the last 64 consumed headers were NOP (0) words and how many of the newest were
+in a row (and from where), then the last 12 non-zero headers and the IO page map around get. The existing
+[FIFOSTEP] dump skips zero words, so a NOP slide is invisible there.
+Why: every black-title run (tlp-7009b, 7009n-1, a3, b4) and the tlp-7005d crash follow "FIFO get=0x00900000 has no
+IO mapping -- resyncing to put=0x000xxxxx": the walker skips the commands up to put and leaves half-set surface
+state (a3/b4: render target 0x1FB0000 colour format 0, no antialias), which patch 7010 showed creating the 2560x1440
+alias surface. get sitting exactly on a 1 MB boundary points at a linear run off the end of a mapped block, e.g.
+NOPs read from a block whose writer (PPU or a SPURS job) had not finished it; this line tells that apart from a
+JUMP/RET target.
+Switch: none.
+Verify: build; nothing new in a normal run; at a resync the [fifo-lost] lines appear.
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -2405,6 +2405,31 @@ static void gcm_rsx_process_fifo_unlocked(void)
+              * nothing logged. Resynchronise to put instead. Commands between
+              * here and put are lost, which is bad, but a permanently dead FIFO
+              * is worse -- and now it says so. */
++            /* Toro patch 7011 diagnostic: how get got here. The [FIFOSTEP] dump skips zero words, so count them:
++             * a run of NOP (0) headers ending at a 1 MB boundary means the walker read a region nobody had
++             * written yet (a block entered before its writer finished) and slid off its end. Printed for the
++             * first 4 events, with the last consumed headers, the CALL return slot and the IO pages around get. */
++            { static int dn = 0;
++              if (dn++ < 4) {
++                  u32 zeros = 0, run = 0, first_zero = 0;
++                  for (u32 t = 0; t < GCM_TRACE_N; t++) {
++                      const u32 k = (s_tr_i + GCM_TRACE_N - 1u - t) % GCM_TRACE_N;   /* newest first */
++                      if (s_tr_w[k] == 0) { zeros++; if (run == t) { run++; first_zero = s_tr_off[k]; } }
++                  }
++                  fprintf(stderr, "[fifo-lost] get=0x%08X put=0x%08X calloff=0x%08X: last %u headers had %u NOP(0)"
++                                  " words, the newest %u in a row (from io 0x%08X)\n", s_fifo_getoff, put,
++                          s_fifo_calloff, (unsigned)GCM_TRACE_N, zeros, run, first_zero);
++                  for (u32 t = 0, shown = 0; t < GCM_TRACE_N && shown < 12; t++) {
++                      const u32 k = (s_tr_i + GCM_TRACE_N - 1u - t) % GCM_TRACE_N;
++                      if (!s_tr_w[k]) continue;
++                      shown++;
++                      fprintf(stderr, "[fifo-lost]   header io=0x%08X w=0x%08X\n", s_tr_off[k], s_tr_w[k]);
++                  }
++                  for (int pg = -3; pg <= 1; pg++) {
++                      const u32 io = (s_fifo_getoff & ~0xFFFFFu) + (u32)(pg * 0x100000);
++                      fprintf(stderr, "[fifo-lost]   io page 0x%08X -> ea 0x%08X\n", io, gcm_io2ea(io));
++                  }
++              } }
+             static u32 last_bad; static int n;
+             if (s_fifo_getoff != last_bad || n < 4) {
+                 last_bad = s_fifo_getoff;

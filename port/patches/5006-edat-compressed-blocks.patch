@@ -1,0 +1,252 @@
+EDAT reader: compressed-file support (flag 0x01): block layer plus the block decompressor. Before: any file with
+EDAT_COMPRESSED_FLAG was refused outright (the old message also wrongly blamed "zlib"). Now the per-block table of a
+compressed file (0x20-byte entries at 0x100) is decoded: for NPD version >= 2 each entry is 0x10 bytes of block hash
+followed by 0x10 bytes (offset be64, stored length be32, "block is compressed" flag be32) masked with bytes of the
+entry itself. Each block is located, hash-checked (CMAC/HMAC over the padded stored bytes, key as for plain blocks),
+CBC-decrypted and, if its flag is set, decoded by edat_lz_decode() (adaptive binary range coder + LZ77 with
+context-modelled literals; implemented from a written specification, own code, MIT); flag 0 blocks are copied.
+Each block must decode to exactly block size (last block: file_size % block_size). Header byte > 0x80 means a raw
+stored stream, header byte >= 11 means literal context 0, input overrun and range 0 are treated as corrupt data.
+Debug-data flag (0x80000000) is still refused. Plain files: path unchanged. Applies after 5002.
+Test: host program calling edat_decrypt_file on compressed SDATs of the disc (SCELOGO.BPM.sdat, 83040 bytes, etc.;
+results in the RE notes). Upstream candidate.
+
+--- a/libs/filesystem/edat.c	2026-10-19 16:32:51.535332636 -0500
++++ b/libs/filesystem/edat.c	2026-10-19 16:32:51.537332688 -0500
+@@ -445,6 +445,166 @@
+     return 0;
+ }
+ 
++/* Block decompressor for EDAT_COMPRESSED_FLAG data: an adaptive binary range coder
++ * driving an LZ77 scheme (context-modelled literals, bucketed match lengths and
++ * distances). Written from a prose specification; no third-party source was used.
++ * Returns the number of bytes written to out, or a negative value on failure. */
++typedef struct {
++    const uint8_t* in; size_t in_len, q;
++    uint32_t R, C;
++    int bad;
++    uint8_t P[0xCC8];
++} edat_rc;
++
++static void edat_rc_norm(edat_rc* d)
++{
++    if (d->R < 0x01000000u) {
++        uint32_t b = 0;
++        if (d->q < d->in_len) b = d->in[d->q]; else d->bad = 1; /* input overrun guard */
++        d->q++;
++        d->R <<= 8;
++        d->C = (d->C << 8) + b;
++    }
++}
++
++/* One modelled bit; the probability cell holds P(bit == 1) in 1/256 units. */
++static int edat_rc_bit(edat_rc* d, unsigned idx)
++{
++    edat_rc_norm(d);
++    uint32_t split = (d->R >> 8) * d->P[idx];
++    d->P[idx] = (uint8_t)(d->P[idx] - (d->P[idx] >> 3));
++    if (d->C < split) {
++        d->R = split;
++        d->P[idx] = (uint8_t)(d->P[idx] + 31);
++        return 1;
++    }
++    d->C -= split;
++    d->R -= split;
++    return 0;
++}
++
++static uint32_t edat_rc_direct(edat_rc* d, uint32_t v, int n)
++{
++    edat_rc_norm(d);
++    while (n-- > 0) {
++        d->R >>= 1;
++        if (d->C < d->R) v = 2 * v + 1;
++        else { v = 2 * v; d->C -= d->R; }
++    }
++    if (d->R == 0) d->bad = 1; /* ASSUMPTION: range 0 means corrupt data */
++    return v;
++}
++
++/* Shared shape of the length-number and distance-number codes: cells at
++ * base+c_hi (used twice), base+c0, base+c1, base+c2; cnt selects how many parts. */
++static uint32_t edat_rc_number(edat_rc* d, unsigned base, int cnt,
++                               unsigned c_hi, unsigned c0, unsigned c1, unsigned c2)
++{
++    uint32_t v = 1;
++    if (cnt >= 3) v = 2 * v + (uint32_t)edat_rc_bit(d, base + c_hi);
++    if (cnt >= 4) v = 2 * v + (uint32_t)edat_rc_bit(d, base + c_hi);
++    if (cnt >= 5) v = edat_rc_direct(d, v, cnt - 4);
++    v = 2 * v + (uint32_t)edat_rc_bit(d, base + c0);
++    if (cnt >= 1) v = 2 * v + (uint32_t)edat_rc_bit(d, base + c1);
++    if (cnt >= 2) v = 2 * v + (uint32_t)edat_rc_bit(d, base + c2);
++    return v;
++}
++
++static int edat_lz_decode(const uint8_t* in, size_t in_len, uint8_t* out, size_t out_cap)
++{
++    if (in_len < 5) return -1;
++    unsigned L = in[0];
++    uint32_t X = ((uint32_t)in[1] << 24) | ((uint32_t)in[2] << 16) | ((uint32_t)in[3] << 8) | in[4];
++    if (L > 0x80) {
++        /* ASSUMPTION: header byte > 0x80 = raw bytes stored in the stream; result is X bytes. */
++        if (X > out_cap || (size_t)X > in_len - 5) return -1;
++        memcpy(out, in + 5, X);
++        return (int)X;
++    }
++    edat_rc* d = (edat_rc*)malloc(sizeof *d);
++    if (!d) return -1;
++    d->in = in; d->in_len = in_len; d->q = 5; d->bad = 0;
++    d->R = 0xFFFFFFFFu; d->C = X;
++    memset(d->P, 0x80, 0xCA8);
++    memset(d->P + 0xCA8, 0, 0xCC8 - 0xCA8);
++
++    size_t pos = 0;
++    unsigned prev = 0, S = 0;
++    int ret = -1;
++    for (;;) {
++        if (d->bad) break;
++        if (!edat_rc_bit(d, 0xB68 + S)) {
++            /* literal */
++            if (S > 0) S--;
++            if (pos == out_cap) { ret = (int)pos; break; }
++            /* ASSUMPTION: shift counts >= 11 give context 0 (T < 2^11). */
++            unsigned T = (unsigned)(((pos % 8) * 256) + prev);
++            unsigned ctx = (L >= 11) ? 0 : ((T >> L) % 8);
++            unsigned v = 1;
++            while (v < 256) v = 2 * v + (unsigned)edat_rc_bit(d, ctx * 255 - 1 + v);
++            out[pos++] = (uint8_t)v;
++            prev = (uint8_t)v;
++            continue;
++        }
++        /* match */
++        int k = -1;
++        unsigned c = 0xB68 + S;
++        for (;;) {
++            c += 8;
++            int b = edat_rc_bit(d, c);
++            if (b) k++;
++            if (!b || k >= 6) break;
++        }
++        unsigned D = 0x7F0 + 1 + (unsigned)k; /* 0x7F1 + k; k = -1 gives 0x7F0 */
++        unsigned H = 0x160;
++        uint32_t N;
++        if (k == -1) N = 1;
++        else {
++            unsigned sel = (unsigned)k * 32 + (unsigned)(((pos << k) % 4) * 8) + (S % 8);
++            N = edat_rc_number(d, 0xBA8 + sel, k, 0x18, 0, 0x08, 0x10);
++            if (N == 0xFF) { ret = (int)pos; break; }
++        }
++        if (N <= 2) { D += 0xF8; H = 0x40; }
++        int s = 1, dd, g;
++        do {
++            dd = 16 * s - (int)H;
++            g = edat_rc_bit(d, D + 8 * (unsigned)s);
++            s = 2 * s + g;
++        } while (dd < 0 && !d->bad);
++        uint32_t M;
++        if (dd > 0 || g == 1) {
++            if (g == 0) dd -= 8;
++            M = edat_rc_number(d, 0x928 + (unsigned)dd, dd / 8, 4, 0, 1, 2);
++        } else M = 1;
++        if (d->bad) break;
++        if (M > pos) break;               /* reaches before block start */
++        size_t stop = pos + N + 1;
++        if (stop > out_cap) break;
++        S = (stop % 2 == 0) ? 7 : 6;
++        for (size_t i = pos; i < stop; i++) out[i] = out[i - M];
++        pos = stop;
++        prev = out[pos - 1];
++    }
++    free(d);
++    return ret;
++}
++
++/* Decode a compressed-file block entry (0x20 bytes at 0x100 + 0x20*block) into
++ * f[16] = offset(be64) length(be32) compressed(be32), and leave the block hash
++ * in meta[0..15]. */
++static void edat_comp_entry(uint32_t version, const uint8_t* m, uint8_t f[16])
++{
++    if (version < 2) { memcpy(f, m + 0x10, 16); return; }
++    for (int j = 0; j < 16; j++) {
++        uint8_t x;
++        if (j < 4)       x = m[j + 8] ^ m[j + 12];
++        else if (j < 8)  x = m[j] ^ m[j + 4];
++        else if (j < 12) x = m[j - 8] ^ m[j + 4];
++        else             x = m[j - 12] ^ m[j - 8];
++        f[j] = m[16 + j] ^ x;
++    }
++}
++
+ int edat_decrypt_file(const char* in_path, const char* out_path)
+ {
+     static int checked = 0;
+@@ -477,9 +637,8 @@
+             in_path, version, license, flags, block_size,
+             (unsigned long long)file_size);
+ 
+-    if (flags & (EDAT_COMPRESSED_FLAG | EDAT_DEBUG_DATA_FLAG)) {
+-        fprintf(stderr, "[edat] unsupported flags 0x%08X (per-block zlib compression "
+-                        "and debug data are not implemented)\n", flags);
++    if (flags & EDAT_DEBUG_DATA_FLAG) {
++        fprintf(stderr, "[edat] unsupported flags 0x%08X (debug data is not implemented)\n", flags);
+         fclose(in); return -3;
+     }
+     if (block_size == 0 || block_size > (16u << 20)) { fclose(in); return -4; }
+@@ -598,9 +757,21 @@
+         if (fseek(in, (long)meta_off, SEEK_SET) != 0 ||
+             fread(meta, 1, meta_size, in) != meta_size) { rc = -9; break; }
+ 
++        /* Compressed files: the entry also says where the block's data is. */
++        uint64_t clen_raw = 0;
++        uint32_t block_compressed = 0;
++        int      compressed = (flags & EDAT_COMPRESSED_FLAG) != 0;
++        if (compressed) {
++            uint8_t f[16];
++            edat_comp_entry(version, meta, f);
++            data_off = be64(f);
++            clen_raw = be32(f + 8);
++            block_compressed = be32(f + 12);
++        }
++
+         /* With FLAG_0x20 the stored hash is the xor of the two halves. */
+         uint8_t block_hash[16];
+-        if (meta_size == 0x20)
++        if (meta_size == 0x20 && !compressed)
+             for (int k = 0; k < 16; k++) block_hash[k] = (uint8_t)(meta[k] ^ meta[k + 16]);
+         else
+             memcpy(block_hash, meta, 16);
+@@ -608,7 +779,9 @@
+         uint64_t len = block_size;
+         if (b == total_blocks - 1 && (file_size % block_size))
+             len = file_size % block_size;
++        if (compressed) len = clen_raw;
+         uint64_t padded = (len + 15) & ~(uint64_t)15;
++        if (padded > block_size + 16) { rc = -13; break; }
+ 
+         if (fseek(in, (long)data_off, SEEK_SET) != 0 ||
+             fread(enc, 1, (size_t)padded, in) != padded) { rc = -10; break; }
+@@ -655,6 +828,24 @@
+ 
+         aes128_cbc_decrypt(ckey, (version <= 1) ? zero_iv : digest,
+                            enc, dec, (size_t)padded);
++        if (compressed && block_compressed) {
++            /* Compressed block: dec[0..len) is the compressed stream; the block's
++             * plaintext is block_size bytes (the last one file_size % block_size). */
++            uint64_t want = block_size;
++            if (b == total_blocks - 1 && (file_size % block_size)) want = file_size % block_size;
++            uint8_t* plain = (uint8_t*)malloc((size_t)want);
++            int n = plain ? edat_lz_decode(dec, (size_t)len, plain, (size_t)want) : -1;
++            if (n != (int)want) {
++                fprintf(stderr, "[edat] block %u: compressed stream (%u bytes) did not decode to "
++                                "%u bytes (got %d)\n", b, (unsigned)len, (unsigned)want, n);
++                free(plain); rc = -14; break;
++            }
++            size_t w = fwrite(plain, 1, (size_t)want, out);
++            free(plain);
++            if (w != want) { rc = -12; break; }
++            written += want;
++            continue;
++        }
+         if (fwrite(dec, 1, (size_t)len, out) != len) { rc = -12; break; }
+         written += len;
+     }

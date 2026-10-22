@@ -1,0 +1,190 @@
+SPURS job chains: no synthetic completion events; ShutdownJobChain really stops the walker. Toro's own patch (7xxx).
+What: (1) jc_execute/jc_thread no longer push (data1 = chain EA, data2 = job counter) to every queue attached with
+cellSpursAttachLv2EventQueue after each JOB, at END and at walker exit. On hardware a job chain posts nothing there:
+Attach connects the queue to the SPURS SPU thread group, so its only events are those SPU code sends itself with
+sys_spu_thread_send_event, which the lv2 user-event path already routes for job contexts (spurs_port_queue).
+Toro's sound jobs ("soc-job") send (port 16, slot index, query answer) themselves; the game writes the attached port
+into the job descriptor (@0x1F28F8) and reads data2 low word as slot index, data3 as answer (@0x1F294C..0x1F2A18).
+The synthetic event duplicated them with data2 = a counter over the whole walk (412 seen), which made the pump
+@0x1F27E0 index past its ~127-slot table, and it filled the queue so the job's own send got EBUSY (0x8001000A).
+Old behaviour kept as opt-in fallback for titles whose job images are not lifted: SPURS_JC_SYNTH_EVENTS=1.
+(2) ShutdownJobChain requested nothing: it cleared `running` while the walker stayed parked at its GUARD, so the
+game's Shutdown+Join (@0x1F26A8/0x1F26B4) returned at once and the following Create+Run started a second walker on
+the same chain and guard (15 RunJobChain on one chain in a 60 s run). Now Shutdown sets a per-chain stop flag the
+walker polls at each command and inside the guard wait; `running` is cleared by the walker thread on exit, so Join
+waits for the real stop (hardware: cellSpursShutdownWorkload / WaitForWorkloadShutdown, [src:RPCS3-CELLSPURS]).
+A Run after an un-joined Shutdown waits for the old walker to leave.
+Test: build tlp.exe; in a run, "[cellSpurs] job chain completion events: none" once, no "job N done -> event
+queue" lines, "[spu-evt] ... port 16 -> queue 4" with rc=0x0 (no 0x8001000A), "chain 0x4023E900: shut down
+after N job(s)" before each re-Run, and no unresolved calls / NULL reads from func_001F27E0 (lr 0x1F29D4).
+Upstream candidate (behaviour change for titles that relied on the synthetic event: needs their jobs lifted or the
+env fallback).
+
+--- a/libs/spurs/cellSpurs.c
++++ b/libs/spurs/cellSpurs.c
+@@ -3315,6 +3315,12 @@
+     u16 max_grab;
+     int run_count;
+     volatile long running;   /* 1 while a host thread walks this chain */
++    /* Toro patch 7001: ShutdownJobChain's request. The walker polls it at every
++     * command and inside a guard wait and returns; `running` stays 1 until the
++     * walker thread has really left, which is what JoinJobChain waits for (on
++     * hardware: Shutdown = cellSpursShutdownWorkload, Join =
++     * cellSpursWaitForWorkloadShutdown + RemoveWorkload). */
++    volatile long stop;
+ } s_jobchains[MAX_JOBCHAINS];
+ 
+ static void jc_dump_commands(const char* tag, u32 ea, int max_words)
+@@ -3630,11 +3636,14 @@
+  * chain then gives up this pass rather than spinning the walker thread
+  * forever). An unknown guard opens immediately -- a chain guarded by something
+  * we never saw initialised must not deadlock the walker. */
+-static int jg_wait(u32 ea)
++static int jg_wait(u32 ea, volatile long* stop)
+ {
+     int i = jg_find(ea);
+     if (i < 0) return 1;
+     for (int spin = 0; spin < 20000; spin++) {     /* ~20 s at 1 ms */
++        /* Toro patch 7001: a chain shut down while parked at its guard is not
++         * running on any SPU, so the workload shutdown completes at once. */
++        if (stop && *stop) return 0;
+         if (s_jobguards[i].pending >= s_jobguards[i].reset) {
+             /* Consume exactly one release worth of credits, so notifies that
+              * arrived during the previous lap still count. */
+@@ -3685,6 +3694,32 @@
+     return (u64)(unsigned)v;
+ }
+ 
++/* Toro patch 7001: a job chain posts NOTHING to the queues attached with
++ * cellSpursAttachLv2EventQueue. That call connects the queue to the SPURS SPU
++ * thread group (sys_spu_thread_group_connect_event_all_threads), so the only
++ * events on it are the ones SPU code sends itself with sys_spu_thread_send_event
++ * (WrOutMbox = data, WrOutIntrMbox = port<<24 | 24-bit value), which the lv2
++ * user-event path already routes for job contexts through spurs_port_queue().
++ * Toro's sound jobs do exactly that: the PPU stores the attached port into the
++ * job descriptor (@0x1F28F8 lbz obj+0x21C -> desc+0x30) and each job sends
++ * (port 16, slot index, query answer); the PPU reads data2 low word as the slot
++ * index and data3 as the answer (@0x1F294C..0x1F2A18). The synthetic per-job
++ * event below arrived as well, with data2 = a lap counter, filled the queue
++ * (the job's own send then got EBUSY) and sent the PPU past its slot table.
++ * Kept only as an opt-in fallback for titles whose job images are not lifted
++ * yet: SPURS_JC_SYNTH_EVENTS=1. */
++static int jc_synth_events(void)
++{
++    static int v = -1;
++    if (v < 0) {
++        const char* e = getenv("SPURS_JC_SYNTH_EVENTS");
++        v = (e && *e && *e != '0') ? 1 : 0;
++        printf("[cellSpurs] job chain completion events: %s\n",
++               v ? "synthetic (SPURS_JC_SYNTH_EVENTS)" : "none (jobs send their own)");
++    }
++    return v;
++}
++
+ static void jc_signal_done(u32 jc_ea, int job_index)
+ {
+     /* Carry the job's mailbox answer in the completion event. On hardware the
+@@ -3740,7 +3775,7 @@
+     }
+ }
+ 
+-static void jc_execute(u32 entry_ea, u32 jc_ea, u32 size_desc)
++static void jc_execute(u32 entry_ea, u32 jc_ea, u32 size_desc, volatile long* stop)
+ {
+     u32 pc = entry_ea, ret_pc = 0;
+     int jobs = 0;
+@@ -3754,6 +3789,12 @@
+     int idle = 0;
+     for (;; idle++) {
+         if (idle > 4096) break;
++        if (stop && *stop) {                 /* Toro patch 7001: ShutdownJobChain */
++            static int _n = 0;
++            if (_n++ < 8)
++                printf("[cellSpurs] chain 0x%08X: shut down after %d job(s)\n", jc_ea, jobs);
++            return;
++        }
+         u64 cmd = vm_read64(pc);
+         u32 op  = (u32)(cmd & 7);
+         u32 ext = (u32)(cmd & 127);
+@@ -3768,7 +3809,7 @@
+              * and sat in event_queue_receive 30 times -- so batching the
+              * completion into one event per pass leaves it waiting for
+              * completions that, from its point of view, never arrive. */
+-            jc_signal_done(jc_ea, idx);
++            if (jc_synth_events()) jc_signal_done(jc_ea, idx);   /* patch 7001 */
+             pc += 8; continue;
+         }
+         if (op == 1) { pc = (u32)(cmd & ~7ull); continue; }   /* RESET_PC */
+@@ -3777,7 +3818,7 @@
+         if (op == 7) {
+             if (ext == (7 | (15 << 3))) {                     /* END */
+                 printf("[cellSpurs] chain 0x%08X: END after %d job(s)\n", jc_ea, jobs);
+-                if (jobs) jc_signal_done(jc_ea, jobs - 1);
++                if (jobs && jc_synth_events()) jc_signal_done(jc_ea, jobs - 1);
+                 return;
+             }
+             if (ext == (7 | (14 << 3))) {                     /* RET */
+@@ -3791,7 +3832,7 @@
+         }
+         if (op == 7 && ext == (7 | (1 << 3))) {           /* GUARD */
+             u32 g_ea = (u32)(cmd & ~127ull);
+-            if (!jg_wait(g_ea)) return;                  /* still closed */
++            if (!jg_wait(g_ea, stop)) return;            /* closed or shut down */
+             pc += 8; continue;
+         }
+         /* NOP(0) / SYNC+LWSYNC(2, one virtual SPU: nothing to wait for) /
+@@ -3814,12 +3855,12 @@
+      * Confirms timing-vs-never before committing to the async rewrite. */
+     { const char* d = getenv("SPURS_JC_DELAY");
+       if (d && *d) Sleep((unsigned)atoi(d)); }
+-    jc_execute(s_jobchains[slot].entry_ea, s_jobchains[slot].jc_ea,
+-               s_jobchains[slot].size_desc);
+-    s_jobchains[slot].running = 0;
+-    /* Tell the application the chain is done. Without this the walk finishes
+-     * in silence and a thread waiting on the attached queue never runs again. */
+-    jc_signal_done(s_jobchains[slot].jc_ea, -1);
++    u32 jc_ea = s_jobchains[slot].jc_ea;
++    jc_execute(s_jobchains[slot].entry_ea, jc_ea,
++               s_jobchains[slot].size_desc, &s_jobchains[slot].stop);
++    /* Patch 7001: no chain-level event on hardware (see jc_synth_events). */
++    if (jc_synth_events()) jc_signal_done(jc_ea, -1);
++    s_jobchains[slot].running = 0;   /* last: JoinJobChain returns after this */
+     return 0;
+ }
+ 
+@@ -3850,6 +3891,22 @@
+             jc_dump_commands(who, s_jobchains[i].entry_ea, 16);
+         }
+         if (s_off || !s_jobchains[i].entry_ea) return CELL_OK;
++        /* Toro patch 7001: Run after a Shutdown that was not Joined. The old
++         * walker is on its way out (it polls `stop`); let it leave so the new
++         * run has the chain, and its guard credits, to itself. Before, Shutdown
++         * cleared `running` while the walker was still parked at its guard, so
++         * Join returned at once and the next Run started a second walker on the
++         * same chain and guard (soc-job: 15 Runs, interleaved completions). */
++        if (s_jobchains[i].stop) {
++            while (s_jobchains[i].running) {
++#ifdef _WIN32
++                Sleep(0);
++#else
++                usleep(0);
++#endif
++            }
++            s_jobchains[i].stop = 0;
++        }
+         /* Coalesce: a chain already being walked must not start twice. */
+         if (_InterlockedCompareExchange(&s_jobchains[i].running, 1, 0) == 0) {
+             HANDLE th = CreateThread(NULL, 1u << 20, jc_thread, (LPVOID)(intptr_t)i, 0, NULL);
+@@ -3886,7 +3943,11 @@
+     if (_n++ < 8) printf("[cellSpurs] ShutdownJobChain(jc=0x%08X)\n", (u32)jc_ea);
+     for (int i = 0; i < MAX_JOBCHAINS; i++) {
+         if (s_jobchains[i].jc_ea == (u32)jc_ea) {
+-            s_jobchains[i].running = 0;   /* stop the walker; Join can now succeed */
++            /* Toro patch 7001: REQUEST the stop; the walker leaves at its next
++             * command or guard poll and clears `running` itself, which is what
++             * Join waits for. Clearing `running` here let Join return while the
++             * walker still ran. */
++            if (s_jobchains[i].running) s_jobchains[i].stop = 1;
+             return CELL_OK;
+         }
+     }

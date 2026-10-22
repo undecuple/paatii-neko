@@ -1,0 +1,28 @@
+Credit: ps3recomp PR #334 by @erikomis (MIT), "cellGcm: an unscaled NV3089 blit copies a row at a time", https://github.com/sp00nznet/ps3recomp/pull/334.
+Upstream PR #334 (NV3089 unscaled row copy), adapted to our stack: the switch keeps the PR's name NV3089_ROWCOPY
+but defaults to 0 here (the PR's default is 1), because the K4 A/B r77-rows (3 valid pairs) found no fps gain and
+worse fps_low1pct / frame-time SD with rows on. LD_NV3089_ROWS (patch 2080) stays an alias and wins when set.
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index d150811e..97026950 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -1016,10 +1016,16 @@ static void nv3089_blit(void)
+     nv3089_blit_body();
+     if (t0) { rsx_perf_add(RSX_PERF_W_NV3089_T, rsx_perf_now() - t0); rsx_perf_add(RSX_PERF_W_NV3089_N, 1); }
+ }
+-static int nv3089_rows_on(void)   /* patch 2080: LD_NV3089_ROWS=1 row copies for unscaled blits */
++/* Upstream PR #334 (adapted): NV3089_ROWCOPY=1 copies an unscaled blit a row at a time; here it drives
++ * patch 2080's row copier (12.4 origin of patch 2083, per-row fallback to the per-pixel stores when a row meets a
++ * write watch, an SPU line reservation or a pending PPU reservation store) instead of the PR's gcm_row_copy.
++ * KZ3 default 0 (the PR's is 1): the K4 A/B r77-rows (3 pairs) gave no fps gain and worse 1 % lows / frame-time
++ * SD with rows on. LD_NV3089_ROWS (2080's switch) is an alias and wins when set. */
++static int nv3089_rows_on(void)
+ {
+     static int on = -1;
+-    if (on < 0) { const char* e = getenv("LD_NV3089_ROWS"); on = (e && e[0] && e[0] != '0') ? 1 : 0; }
++    if (on < 0) { const char* e = getenv("LD_NV3089_ROWS"); if (!e || !e[0]) e = getenv("NV3089_ROWCOPY");
++                  on = (e && e[0]) ? (e[0] != '0') : 0; }   /* KZ3: default 0, PR #334's is 1 */
+     return on;
+ }
+ /* Patch 2080: would vm_write* into [lo, lo+n) only store? (no write watch, no SPU line reservation, no PPU

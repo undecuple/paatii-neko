@@ -1,0 +1,115 @@
+PPU threads: honour SYS_PPU_THREAD_CREATE_JOINABLE; a non-joinable thread frees its slot when it ends.
+Toro's own patch (7xxx).
+What: sys_ppu_thread_create ignored its flags and made every thread joinable, so a thread created without
+SYS_PPU_THREAD_CREATE_JOINABLE (bit 0) stayed FINISHED after its exit and held its slot for good (PPU_THREAD_MAX 64,
+tid = slot + 1). Toro creates one "Canvas2 thread" (flags 0, EBOOT 0xC9A18) per text it lays out and never calls
+sys_ppu_thread_join; in run tlp-7007b the 63 slots were used up by tid 64 and the next create, at the Story memory
+book, returned CELL_EAGAIN 0x80010001 (lr 0xC9A1C, logged by patch 7006), so the speech bubble's text canvas was
+never built: no bubble, no photo zoom. Toro passes flags 0 at e.g. 0x903D8, 0x1D88C, 0xC9A18 and 1 at 0x1D8D8,
+0x23724, 0x1F1DC8.
+Now: joinable = flags & 1. A thread that is not joinable (created so, or detached) frees its slot at the end of
+ppu_host_thread_proc, its last use of the slot, after closing its event and handle (Windows) or destroying its
+mutex/cond (POSIX; the host thread is pthread_detach'ed at creation) under the table lock, so a new create cannot
+take the slot early. sys_ppu_thread_exit no longer frees a detached slot itself (the unwind into the epilogue
+follows); the main thread (slot 0) is still marked FINISHED there. The create log line shows the flags.
+Note: thread ids are slot numbers, so a freed id is reused, as the slot table always implied.
+Switch: none.
+Verify: build; run to the Story memory book: no "sys_ppu_thread_create ... returned 0x80010001", Canvas2 threads get
+reused ids, the speech bubble appears with its text.
+
+diff --git a/runtime/syscalls/sys_ppu_thread.c b/runtime/syscalls/sys_ppu_thread.c
+--- a/runtime/syscalls/sys_ppu_thread.c
++++ b/runtime/syscalls/sys_ppu_thread.c
+@@ -171,12 +171,28 @@ static void* ppu_host_thread_proc(void* param)
+     table_lock();
+     info->exit_status = (int64_t)info->ctx.gpr[3];
+ 
+-    if (info->state == PPU_THREAD_STATE_DETACHED) {
+-        /* Detached threads self-clean */
++    /* Toro patch 7008: a thread nobody can join (created without SYS_PPU_THREAD_CREATE_JOINABLE, or detached)
++     * frees its slot here, its last use of `info`. The sync objects go first, under the table lock: once the slot is
++     * FREE a new sys_ppu_thread_create may reuse it and create its own. Joinable threads stay FINISHED for the join. */
++    if (!info->joinable) {
++#ifdef _WIN32
++        if (info->finish_event) CloseHandle(info->finish_event);
++        if (info->host_thread) CloseHandle(info->host_thread);
++        info->finish_event = NULL;
++        info->host_thread = NULL;
++#else
++        pthread_mutex_destroy(&info->finish_mutex);
++        pthread_cond_destroy(&info->finish_cond);
++#endif
+         info->state = PPU_THREAD_STATE_FREE;
+-    } else {
+-        info->state = PPU_THREAD_STATE_FINISHED;
++        table_unlock();
++#ifdef _WIN32
++        return 0;
++#else
++        return NULL;
++#endif
+     }
++    info->state = PPU_THREAD_STATE_FINISHED;
+     table_unlock();
+ 
+     /* Signal anyone waiting for join */
+@@ -350,7 +366,7 @@ int64_t sys_ppu_thread_create(ppu_context* ctx)
+     uint64_t arg          = LV2_ARG_U64(ctx, 2);
+     int32_t  priority     = LV2_ARG_S32(ctx, 3);
+     uint32_t stack_size   = LV2_ARG_U32(ctx, 4);
+-    /* uint64_t flags     = LV2_ARG_U64(ctx, 5); */
++    uint64_t flags        = LV2_ARG_U64(ctx, 5);   /* Toro patch 7008: was ignored */
+     uint32_t name_addr    = LV2_ARG_PTR(ctx, 6);
+ 
+     if (stack_size == 0) stack_size = VM_PPU_STACK_SIZE;
+@@ -387,7 +403,13 @@ int64_t sys_ppu_thread_create(ppu_context* ctx)
+ 
+     t->state      = PPU_THREAD_STATE_RUNNING;
+     t->priority   = priority;
+-    t->joinable   = 1;
++    /* Toro patch 7008: SYS_PPU_THREAD_CREATE_JOINABLE is bit 0 of the flags. Every thread used to be joinable, so a
++     * thread created without the flag (nobody will ever join it) stayed FINISHED after its exit and kept its slot:
++     * Toro creates one "Canvas2 thread" (flags 0, EBOOT 0xC9A18) per text it lays out, never joins any thread, and
++     * after 63 such exits sys_ppu_thread_create returned CELL_EAGAIN at the Story memory book (run tlp-7007b, tid 65),
++     * so the speech bubble's text was never built. Toro passes flags 0 at e.g. 0x903D8, 0x1D88C, 0xC9A18 and 1 at
++     * 0x1D8D8, 0x23724, 0x1F1DC8. */
++    t->joinable   = (flags & 1u) ? 1 : 0;
+     t->stack_addr = stack_addr;
+     t->stack_size = stack_size;
+     t->entry_addr = entry;
+@@ -426,9 +448,9 @@ int64_t sys_ppu_thread_create(ppu_context* ctx)
+         *out = be_id;
+     }
+ 
+-    fprintf(stderr, "[SYS] sys_ppu_thread_create tid=%llu name=\"%s\" entry=0x%08llX arg=0x%llX stack=0x%X prio=%d\n",
++    fprintf(stderr, "[SYS] sys_ppu_thread_create tid=%llu name=\"%s\" entry=0x%08llX arg=0x%llX stack=0x%X prio=%d flags=0x%llX\n",
+             (unsigned long long)thread_id, t->name, (unsigned long long)entry, (unsigned long long)arg,
+-            stack_size, priority);
++            stack_size, priority, (unsigned long long)flags);
+     /* YDKJ: dump the worker arg-object: func_000750A8 (thread body) does
+      * this=[arg+0x8], vtable=[arg+0xC], method=[vtable+0]. If this(+0x8) is null
+      * the worker dispatches its job on a null object -> construction never runs. */
+@@ -518,6 +540,7 @@ int64_t sys_ppu_thread_create(ppu_context* ctx)
+         table_unlock();
+         return (int64_t)(int32_t)CELL_EAGAIN;
+     }
++    if (!t->joinable) pthread_detach(t->host_thread);   /* Toro patch 7008: nobody pthread_joins it */
+ #endif
+ 
+     table_unlock();
+@@ -540,11 +563,11 @@ int64_t sys_ppu_thread_exit(ppu_context* ctx)
+     ppu_thread_info* t = find_thread(tid);
+     if (t) {
+         t->exit_status = (int64_t)status;
+-        if (t->state == PPU_THREAD_STATE_DETACHED) {
+-            t->state = PPU_THREAD_STATE_FREE;
+-        } else {
++        /* Toro patch 7008: a non-joinable host thread frees its slot in ppu_host_thread_proc, right after the
++         * unwind below (freeing it here let a new thread take the slot while this one still ran its epilogue).
++         * The main thread (slot 0) has no such epilogue and is marked FINISHED as before. */
++        if (t->joinable || t == &g_ppu_threads[0])
+             t->state = PPU_THREAD_STATE_FINISHED;
+-        }
+ 
+ #ifdef _WIN32
+         SetEvent(t->finish_event);

@@ -1,0 +1,16 @@
+work/
+build/
+Game
+GameUpdate
+*.elf
+*.self
+*.sprx
+*.pkg
+*.psarc
+*.gpr
+*.rep/
+__pycache__/
+.claude/settings.local.json
+.tlp-lane
+.tlp-main
+Game-JP

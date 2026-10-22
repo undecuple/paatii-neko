@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest an improvement or a PC feature
+labels: [enhancement, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the README status table first; it may already be planned. Please do **not** attach game files, keys, firmware, decrypted binaries, saves or memory dumps.
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you like, and why?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Display/graphics, Controls/input (pads, motion), Audio, Minigames, Online, Linux/Proton, Tools/build, Other]
+  - type: checkboxes
+    id: gameplay
+    attributes:
+      label: Gameplay
+      options:
+        - label: This would change gameplay (it would then be an opt-in setting)
+  - type: input
+    id: version
+    attributes:
+      label: Port build and game version (if it matters)
+      description: "Release number or commit, and the game version you own."

@@ -1,0 +1,116 @@
+cellL10n: UTF8toUTF32, UTF32toUTF8 and UTF16toUTF32 as guest HLE imports (context handlers).
+Toro's own patch (7xxx).
+What: cellL10n.c implements these with host pointers and host-endian lengths and nothing registers them
+(gen_hle_nids.py takes cell / sys / sce names only), so Toro's UTF8toUTF32 (0x74871FE0) fell to the unresolved-NID
+default: r3 = 0, *dst untouched. Patch 7006 showed it (run tlp-7005, lr 0xB6730, thread 34). Toro walks every string
+it draws with it: EBOOT 0xB6718 / 0xB6758 call UTF8toUTF32(current pointer, &code) and advance by the return value;
+0 reads as code 0, the end of the string. So every text came out empty, the memory-book speech bubble included (its
+narrow blank strip in tlp-7004).
+Adds three context handlers on guest memory (big-endian): UTF8toUTF32(const u8* src, u32* dst) and
+UTF16toUTF32(const u16* src, u32* dst) return the source units consumed (0 on an illegal sequence, *dst untouched);
+UTF32toUTF8(u32 code, u8* dst) returns the bytes written. Registered by tlp_l10n_register(), which port/tlp/hle_tlp.cpp
+calls (a constructor in this object would not be linked: nothing else references it). NIDs from the import table
+(they match ps3_compute_nid of the names). The string forms Toro also imports (UTF8stoUTF16s 0xF7681B9A, UTF16stoUTF8s
+0xE6F5711B, L10nConvertStr 0x931FF25A) stay unregistered until a log shows them called.
+Semantics from the SDK names and psdevwiki-level knowledge; RPCS3's cellL10n.cpp read for behaviour only, nothing
+copied.
+Switch: none.
+Verify: build (with hle_tlp.cpp calling tlp_l10n_register); run: no "unresolved NID 0x74871FE0" line; strings that were
+empty (memory-book speech bubble) now have glyphs.
+
+diff --git a/libs/font/cellL10n.c b/libs/font/cellL10n.c
+--- a/libs/font/cellL10n.c
++++ b/libs/font/cellL10n.c
+@@ -8,6 +8,8 @@
+  */
+ 
+ #include "cellL10n.h"
++#include "../../runtime/ppu/ppu_memory.h"   /* Toro patch 7007: guest memory */
++#include "../../runtime/ppu/ppu_context.h"
+ #include <stdio.h>
+ #include <string.h>
+ 
+@@ -551,3 +553,83 @@ s32 l10n_convert_str(s32 src_code, const void* src, u32* src_len,
+                           (u32)dst_code, dst, out_len, dst_len);
+     return rc;
+ }
++
++/* ---------------------------------------------------------------------------
++ * Toro patch 7007: the single-character converters as HLE imports.
++ *
++ * The functions above take host pointers and host-endian lengths and are not registered at all (gen_hle_nids.py only
++ * registers cell / sys / sce names), so Toro's UTF8toUTF32 import (0x74871FE0) fell to the unresolved-NID default:
++ * r3 = 0, *dst untouched. Toro walks every string it draws with it (EBOOT 0xB6718 / 0xB6758: r3 = the current
++ * pointer, r4 = a u32 on the stack; the return value is the number of bytes to advance, 0 is read as code 0), so every
++ * text, the memory-book speech bubble included, came out empty.
++ *
++ * SDK single-character forms (psdevwiki-level knowledge; RPCS3's cellL10n.cpp read for behaviour only, nothing
++ * copied): UTF8toUTF32(const u8* src, u32* dst) and UTF16toUTF32(const u16* src, u32* dst) return the source units
++ * consumed (0 on an illegal sequence, *dst untouched); UTF32toUTF8(u32 src, u8* dst) returns the bytes written (0 for
++ * an illegal code point). Guest pointers, big-endian. The string forms (UTF8stoUTF16s, UTF16stoUTF8s, L10nConvertStr,
++ * also imported) stay unregistered until a log shows them called (patch 7006 names each one once).
++ * -----------------------------------------------------------------------*/
++static int utf8_seq_len(u8 b)
++{
++    return b < 0x80 ? 1 : (b & 0xE0) == 0xC0 ? 2 : (b & 0xF0) == 0xE0 ? 3 : (b & 0xF8) == 0xF0 ? 4 : 0;
++}
++
++/* 0x74871FE0 UTF8toUTF32(src, dst) */
++static void hle_UTF8toUTF32(ppu_context* ctx)
++{
++    const u32 src = (u32)ctx->gpr[3], dst = (u32)ctx->gpr[4];
++    ctx->gpr[3] = 0;
++    if (!src || !dst) return;
++    u8 buf[4];
++    buf[0] = vm_read8(src);
++    const int n = utf8_seq_len(buf[0]);
++    if (!n) return;
++    for (int i = 1; i < n; i++) {
++        buf[i] = vm_read8(src + (u32)i);
++        if ((buf[i] & 0xC0) != 0x80) return;   /* stop at the first bad byte: never read past a NUL */
++    }
++    u32 cp = 0;
++    const int used = decode_utf8(buf, (u32)n, &cp);
++    if (!used) return;
++    vm_write32(dst, cp);
++    ctx->gpr[3] = (u64)used;
++}
++
++/* 0x9768B6D3 UTF32toUTF8(src code, dst) */
++static void hle_UTF32toUTF8(ppu_context* ctx)
++{
++    const u32 cp = (u32)ctx->gpr[3], dst = (u32)ctx->gpr[4];
++    ctx->gpr[3] = 0;
++    if (!dst) return;
++    u8 buf[4];
++    const int n = encode_utf8(cp, buf, 4);
++    for (int i = 0; i < n; i++) vm_write8(dst + (u32)i, buf[i]);
++    ctx->gpr[3] = (u64)n;
++}
++
++/* 0xA19FB9DE UTF16toUTF32(src, dst) */
++static void hle_UTF16toUTF32(ppu_context* ctx)
++{
++    const u32 src = (u32)ctx->gpr[3], dst = (u32)ctx->gpr[4];
++    ctx->gpr[3] = 0;
++    if (!src || !dst) return;
++    u16 w[2];
++    w[0] = vm_read16(src);
++    u32 len = 1;
++    if (w[0] >= 0xD800 && w[0] <= 0xDBFF) { w[1] = vm_read16(src + 2); len = 2; }
++    u32 cp = 0;
++    const int used = decode_utf16(w, len, &cp);
++    if (!used) return;
++    vm_write32(dst, cp);
++    ctx->gpr[3] = (u64)used;
++}
++
++extern void ps3_hle_register_ctx(uint32_t nid, const char* name, void (*fn)(ppu_context*));
++/* Called by the port's HLE registration (port/tlp/hle_tlp.cpp): nothing else references this object, so a
++ * constructor here would not be linked from the static runtime library. NIDs from the title's import table. */
++void tlp_l10n_register(void)
++{
++    ps3_hle_register_ctx(0x74871FE0u, "UTF8toUTF32", hle_UTF8toUTF32);
++    ps3_hle_register_ctx(0x9768B6D3u, "UTF32toUTF8", hle_UTF32toUTF8);
++    ps3_hle_register_ctx(0xA19FB9DEu, "UTF16toUTF32", hle_UTF16toUTF32);
++}

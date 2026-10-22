@@ -1,0 +1,109 @@
+HLE: log each distinct unresolved NID once (name when known, lr, thread), and each (import, CELL error) return once.
+Toro's own patch (7xxx).
+What: the non-KZ3_LOG_REDIRECT_STDIO branch of ps3_hle_call printed "[hle] unresolved NID" for the first 40 unresolved
+calls in total. In run tlp-7004 one NID (0x54876603 cellSpursQueueSize) used 39 of them, so every import missing
+after that (the five cellFont functions found by static analysis, the RE notes "Memory-book
+speech bubble") was never logged. Now each distinct NID is logged once with lr and thread id, under a small spinlock,
+bounded at 1024 distinct NIDs (then one line saying logging stopped). The name comes from ps3_hle_name (a registered
+entry without a handler) or from ps3_hle_nid_name_hint, a weak hook returning NULL that a port may define from its
+import table. The return value is unchanged (r3 = 0).
+Also: the first time each (NID, 0x80xxxxxx code) pair comes back from a registered handler (table or context), one
+line "[hle] NAME (0xNID) returned 0x8xxxxxxx lr=...", bounded at 1024 pairs; a
+return whose upper 32 bits are neither 0 nor all ones is a u64 value, not an error (cellGcmGetTimeStamp). Run tlp-7005 needed this: every cellFont
+call returned 0x80540003 UNINITIALIZED with nothing in the log.
+Switch: none.
+Verify: build; run: one "[hle] unresolved NID 0x........ lr=0x........ tid=N" line per distinct NID, no repeats; one line per new (import, error code) pair.
+
+diff --git a/runtime/ppu/ppu_hle.cpp b/runtime/ppu/ppu_hle.cpp
+--- a/runtime/ppu/ppu_hle.cpp
++++ b/runtime/ppu/ppu_hle.cpp
+@@ -206,6 +206,39 @@ static void ps3_hle_unresolved(uint32_t nid, ppu_context* ctx)
+     ctx->gpr[3] = s_fake ? 0u : (uint64_t)(uint32_t)CELL_ERROR_ERROR;
+ }
+ 
++/* Toro patch 7006: optional name for an import nothing registered. A port may define it (from its import table);
++ * this weak definition (the shape that links everywhere, see flow_spurs_kernel_spawn_postinit) knows none. */
++extern "C" const char* ps3_hle_nid_name_hint(uint32_t nid) __attribute__((weak));
++extern "C" const char* ps3_hle_nid_name_hint(uint32_t nid) { (void)nid; return NULL; }
++
++/* Toro patch 7006: the first time each (import, error code) pair comes back from an HLE handler, say so. A CELL error
++ * is 0x80xxxxxx; a title that ignores it carries on with untouched out-parameters, which is invisible otherwise
++ * (run tlp-7005: every cellFont call returned 0x80540003 UNINITIALIZED without a line in the log). Bounded: 1024
++ * pairs, then one line saying it stopped. */
++static void hle_log_error_once(uint32_t nid, const char* name, uint64_t r3, uint32_t lr)
++{
++    const uint32_t rc = (uint32_t)r3, hi = (uint32_t)(r3 >> 32);
++    /* An s32 error is sign- or zero-extended; a u64 result (cellGcmGetTimeStamp, GetLastFlipTime) is not one. */
++    if ((rc >> 24) != 0x80u || (hi != 0u && hi != 0xFFFFFFFFu)) return;
++    static uint64_t s_pairs[1024];
++    static uint32_t s_n = 0;
++    static int s_lock = 0;
++    const uint64_t key = ((uint64_t)nid << 32) | rc;
++    while (__atomic_test_and_set(&s_lock, __ATOMIC_ACQUIRE)) { }
++    uint32_t k = 0;
++    while (k < s_n && k < 1024 && s_pairs[k] != key) k++;
++    const int fresh = (k == s_n && s_n < 1024);
++    const int full  = (k == s_n && s_n == 1024);
++    if (fresh) s_pairs[s_n++] = key;
++    if (full) s_n++;
++    __atomic_clear(&s_lock, __ATOMIC_RELEASE);
++    if (fresh)
++        fprintf(stderr, "[hle] %s (0x%08X) returned 0x%08X lr=0x%08X (first time for this code)\n",
++                name ? name : "?", nid, rc, lr);
++    else if (full)
++        fprintf(stderr, "[hle] more than 1024 distinct HLE error returns; no longer logging new ones\n");
++}
++
+ extern "C" void ppu_prof_stamp(void* ctx, unsigned lr);
+ extern "C" uint32_t ppu_prof_resolve_host(void* ra);
+ extern "C" void ps3_hle_call(uint32_t nid, ppu_context* ctx)
+@@ -668,6 +701,7 @@ extern "C" void ps3_hle_call(uint32_t nid, ppu_context* ctx)
+             { unsigned t = (unsigned)ctx->thread_id;
+               if (t < PS3_HLE_INFLIGHT_MAX) g_hle_inflight[t] = g_ctx[i].name; }
+             g_ctx[i].fn(ctx);
++            hle_log_error_once(nid, g_ctx[i].name, ctx->gpr[3], (uint32_t)ctx->lr);   /* Toro patch 7006 */
+             { unsigned t = (unsigned)ctx->thread_id;
+               if (t < PS3_HLE_INFLIGHT_MAX) g_hle_inflight[t] = nullptr; }
+             return;
+@@ -695,8 +729,31 @@ extern "C" void ps3_hle_call(uint32_t nid, ppu_context* ctx)
+         /* KZ3 patch 2030: each distinct NID once, with its caller (was: the first 40 hits). */
+         KZ3_LOG_ONCE_KEY(KZ3_LOG_WARN, "hle", nid, "unresolved NID 0x%08X lr=0x%08X", nid, (uint32_t)ctx->lr);
+ #else
+-        static int logged = 0;
+-        if (logged < 40) { fprintf(stderr, "[hle] unresolved NID 0x%08X\n", nid); logged++; }
++        /* Toro patch 7006: each distinct NID once, with its caller and its name when one is known (was: the first 40
++         * calls in total, which one NID called in a loop used up long before the next missing import was hit). The
++         * set is bounded: 1024 distinct NIDs, then one line saying the log stopped. */
++        {
++            static uint32_t s_seen[1024];
++            static uint32_t s_n = 0;
++            static int s_lock = 0;
++            while (__atomic_test_and_set(&s_lock, __ATOMIC_ACQUIRE)) { }
++            uint32_t k = 0;
++            while (k < s_n && k < 1024 && s_seen[k] != nid) k++;
++            const int fresh = (k == s_n && s_n < 1024);
++            const int full  = (k == s_n && s_n == 1024);
++            if (fresh) s_seen[s_n++] = nid;
++            if (full) s_n++;   /* past the cap: report that once */
++            __atomic_clear(&s_lock, __ATOMIC_RELEASE);
++            if (fresh) {
++                const char* nm = ps3_hle_name(nid);
++                if (!nm) nm = ps3_hle_nid_name_hint(nid);
++                fprintf(stderr, "[hle] unresolved NID 0x%08X%s%s%s lr=0x%08X tid=%llu\n", nid,
++                        nm ? " (" : "", nm ? nm : "", nm ? ")" : "", (uint32_t)ctx->lr,
++                        (unsigned long long)ctx->thread_id);
++            } else if (full) {
++                fprintf(stderr, "[hle] more than 1024 distinct unresolved NIDs; no longer logging new ones\n");
++            }
++        }
+ #endif
+         /* cellSaveData call-shape capture: dump r3-r10 + resolve r7/r8 as OPD
+          * callbacks (statCallback/fileCallback) to learn the cellSaveDataAutoLoad2
+@@ -762,6 +819,7 @@ extern "C" void ps3_hle_call(uint32_t nid, ppu_context* ctx)
+     uint64_t r = fn(ctx->gpr[3], ctx->gpr[4], ctx->gpr[5], ctx->gpr[6],
+                     ctx->gpr[7], ctx->gpr[8], ctx->gpr[9], ctx->gpr[10]);
+     ctx->gpr[3] = r;   /* PPC return value */
++    hle_log_error_once(nid, e->name, r, (uint32_t)ctx->lr);   /* Toro patch 7006 */
+     /* PS3_HLE_PTRCHECK: the guest stores HLE return values as guest pointers, so
+      * an HLE returning a value outside guest RAM (>= 0x10000000) that is not a
+      * CELL_ERROR code (0x8001xxxx / 0x8002xxxx) is leaking a truncated HOST

@@ -1,0 +1,421 @@
+ppu/spu: read and write watch diagnostics for finding who reads a value (all off by default).
+Toro's own patch (7xxx); diagnostic only: the store and load paths it changes behave as before unless PPU_RWATCH,
+PPU_WWATCH_FN or SPU_DMAWATCH is set, and nothing is printed unless one of the switches below is set.
+What:
+- PPU_RWATCH_UNIQUE=1 (with PPU_RWATCH=<hex>[,len]) logs one line per distinct reading site, keyed on the host return
+  address and the guest lr (so memcpy called from different guest callers stays apart): address, size, value, guest
+  function, lr, thread; up to PPU_RWATCH_UNIQUE_MAX (default 256, max 4096); guest stack for the first 16. Unset: old
+  behaviour (24 hits).
+- PPU_WWATCH_FN=<hex guest fn> logs every vm_write* store made by that function (PPU_WWATCH_FN_MAX, default 64, 0 =
+  unlimited), to find an object address from the function that fills it.
+- PPU_RWATCH_FOLLOW=1 (with PPU_WWATCH_FN) watches the objects that function fills: a 32-bit store at A then one at
+  A+0xC sets a 16-byte window at A; PPU_RWATCH_FOLLOW_VAL=<hex>[,width] follows the first store of that value instead.
+  Up to 8 windows; when full, the oldest is replaced, so objects created late are still watched.
+- PPU_RWATCH also sees vm_read64, the HLE _sys_memcpy/_sys_memcmp source ranges and, in a build with -DPPU_RW_HOOKS
+  (needs a re-lift), the lifted code's direct loads (lvx, lvlx, lvrx, lvebx/ehx/ewx, lwbrx, lhbrx, ldbrx). Overlap
+  test, so a 16-byte load covering the window is caught.
+- SPU_DMAWATCH=<hexlo>-<hexhi>[,...] (up to 8 ranges) logs every SPU main-memory read that overlaps a range (mfc GET
+  and GETL elements, GETLLAR, raw-SPU GET); SPU_DMAWATCH_MAX caps the lines (default 2000).
+- CELLPAD_BUFLOG=1: cellPadGetData prints each distinct (port, guest buffer) once (up to 8).
+Why: these found the reader of the pad sensor words in the chick minigame (func_00116BF8, latching them for the
+minigame script) after the plain watch had only covered pad objects created in the menus.
+diff --git a/runtime/ppu/ppu_loader.cpp b/runtime/ppu/ppu_loader.cpp
+--- a/runtime/ppu/ppu_loader.cpp
++++ b/runtime/ppu/ppu_loader.cpp
+@@ -1515,9 +1515,21 @@
+ 
+ extern "C" {
+ /* PPU_RWATCH=<hex>[,len] -- see the note in vm_read8. */
++/* patch 7018 diagnostic: PPU_RWATCH_FOLLOW=1 (with PPU_WWATCH_FN=<fn>) re-arms the read window on the object that fn
++ * fills: a 32-bit store at A followed by one at A+0xC (func_001A6FF8's sensor block order X, G) sets the window to
++ * A..A+0x10. For objects whose heap address differs from run to run. */
++static volatile uint32_t g_rw_follow_lo[8];   /* every object seen, up to 8 */
++static volatile int g_rw_follow_n = 0;
++static int g_rw_follow = -1;
+ static inline void ppu_rwatch_hit(uint32_t a, int width, void* ra)
+ {
+     static int64_t s_lo = -2; static uint32_t s_len = 0x10;
++    if (g_rw_follow < 0) g_rw_follow = getenv("PPU_RWATCH_FOLLOW") != NULL;
++    if (g_rw_follow) {   /* hit when the load overlaps any followed object's 16-byte window */
++        int k, n = g_rw_follow_n; s_lo = -1; s_len = 0x10;
++        for (k = 0; k < n; k++)
++            if ((uint64_t)a + (uint32_t)width > g_rw_follow_lo[k] && a < g_rw_follow_lo[k] + 0x10u) { s_lo = g_rw_follow_lo[k]; break; }
++    }
+     if (s_lo == -2) {
+         const char* e = getenv("PPU_RWATCH");
+         s_lo = e ? (int64_t)strtoul(e, 0, 16) : -1;
+@@ -1526,7 +1538,49 @@
+         if (!s_len) s_len = 0x10;
+     }
+     if (s_lo < 0) return;
+-    if (a < (uint32_t)s_lo || a >= (uint32_t)s_lo + s_len) return;
++    if ((uint64_t)a + (uint32_t)width <= (uint32_t)s_lo || a >= (uint32_t)s_lo + s_len) return;   /* 7018: overlap, for 16-byte loads */
++    /* patch 7018 diagnostic: PPU_RWATCH_UNIQUE=1 replaces the 24-hit cap by one line per DISTINCT reading site
++     * (host return address = one vm_read* call site = one guest load instruction), up to PPU_RWATCH_UNIQUE_MAX
++     * (default 256) sites, with the address, size, value, the guest function the host address maps to, the guest
++     * lr and the thread. The guest stack is dumped for the first 16 sites. Unset: the old behaviour. */
++    {
++        static int s_uniq = -1; static unsigned s_umax = 256;
++        if (s_uniq < 0) {
++            const char* u = getenv("PPU_RWATCH_UNIQUE");
++            const char* m = getenv("PPU_RWATCH_UNIQUE_MAX");
++            if (m && atoi(m) > 0) s_umax = (unsigned)atoi(m);
++            if (s_umax > 4096) s_umax = 4096;
++            s_uniq = (u && *u && *u != '0') ? 1 : 0;
++        }
++        if (s_uniq) {
++            static uintptr_t seen[4096]; static unsigned nseen; static volatile long lk; static int capmsg;
++            uint64_t v = 0, v2 = 0;
++            if (!vm_oob(a, (uint32_t)width)) {
++                uint8_t b[16] = {0}; memcpy(b, vm_base + a, (size_t)(width > 16 ? 16 : width));
++                for (int k = 0; k < (width > 8 ? 8 : width); k++) v = (v << 8) | b[k];
++                for (int k = 8; k < width && k < 16; k++) v2 = (v2 << 8) | b[k];
++            }
++            /* A site is (host return address, guest lr): shared helpers such as memcpy count once per caller. */
++            extern PPU_THREAD_LOCAL ppu_context* g_active_ctx;
++            const uintptr_t key = (uintptr_t)ra ^ ((uintptr_t)(g_active_ctx ? g_active_ctx->lr : 0u) << 40);
++            while (__sync_lock_test_and_set(&lk, 1)) { }
++            unsigned i = 0; while (i < nseen && seen[i] != key) i++;
++            int isnew = 0, full = 0;
++            if (i == nseen) { if (nseen < s_umax) { seen[nseen++] = key; isnew = 1; } else if (!capmsg) { capmsg = 1; full = 1; } }
++            const unsigned idx = i;
++            __sync_lock_release(&lk);
++            if (isnew) {
++                fprintf(stderr, "[rwatch-u] site#%u read%d 0x%08X = 0x%llX%s guest-fn=0x%08X host-ra=%p lr=0x%08X tid=%u\n",
++                        idx, width, a, (unsigned long long)v, width > 8 ? "+hi" : "", ppu_prof_resolve_host(ra), ra,
++                        g_active_ctx ? (uint32_t)g_active_ctx->lr : 0u,
++                        g_active_ctx ? (unsigned)g_active_ctx->thread_id : 0u);
++                if (width > 8) fprintf(stderr, "[rwatch-u]   site#%u second half 0x%llX\n", idx, (unsigned long long)v2);
++                if (idx < 16 && g_active_ctx) ppu_dump_guest_stack(g_active_ctx, "rwu");
++            }
++            if (full) fprintf(stderr, "[rwatch-u] --- %u distinct sites reached; further new sites NOT shown (raise PPU_RWATCH_UNIQUE_MAX, max 4096) ---\n", s_umax);
++            return;
++        }
++    }
+     static unsigned long rn;
+     if (++rn <= 24 || (rn % 4096) == 0) {
+         /* ...and the VALUE. PPU_WWATCH has always printed what was written;
+@@ -1535,9 +1589,10 @@
+          * and a read watch is usually armed precisely because a field reads
+          * wrong. */
+         uint32_t v = 0;
+-        if (!vm_oob(a, (uint32_t)width)) {
+-            uint32_t t = 0; memcpy(&t, vm_base + a, (size_t)width);
+-            v = __builtin_bswap32(t) >> ((4 - width) * 8);
++        const int w4 = width > 4 ? 4 : width;   /* 7018: 8- and 16-byte loads show their first word */
++        if (!vm_oob(a, (uint32_t)w4)) {
++            uint32_t t = 0; memcpy(&t, vm_base + a, (size_t)w4);
++            v = __builtin_bswap32(t) >> ((4 - w4) * 8);
+         }
+         fprintf(stderr, "[rwatch] n=%lu read%d 0x%08X = 0x%X guest-fn=0x%08X\n",
+                 rn, width, a, v, ppu_prof_resolve_host(ra));
+@@ -1668,6 +1723,22 @@
+     if (hook) hook(ea, size);
+ }
+ /* ---- KZ3 patch 2082 end ---- */
++/* patch 7018: reads the lifted code does straight from vm_base (lvx, lvlx, lvrx, lvebx/ehx/ewx, lwbrx, lhbrx, ldbrx)
++ * call this through PPU_RW() (ppu_lifter.py preamble) when g_ppu_rw_on, which is PPU_RWATCH being set. The host
++ * return address is the call site inside the lifted function, as for vm_read*. */
++extern "C" int g_ppu_rw_on = getenv("PPU_RWATCH") ? 1 : 0;
++extern "C" __attribute__((noinline)) void ppu_rwatch_raw(uint64_t ea, uint32_t n)
++{
++    ppu_rwatch_hit((uint32_t)ea, (int)n, __builtin_return_address(0));
++}
++/* patch 7018: HLE bulk reads of guest memory (_sys_memcpy / _sys_memcmp in libs/system) report the source range. */
++extern "C" __attribute__((noinline)) void ppu_rwatch_range(const void* host_src, uint32_t n)
++{
++    if (!g_ppu_rw_on || !host_src || (const uint8_t*)host_src < vm_base) return;
++    const uint64_t off = (uint64_t)((const uint8_t*)host_src - vm_base);
++    if (off >= 0x100000000ull) return;
++    for (uint32_t o = 0; o < n; o += 16) ppu_rwatch_hit((uint32_t)off + o, (int)(n - o < 16 ? n - o : 16), __builtin_return_address(0));
++}
+ static void vm_fast_init(void)
+ {
+     const char* en = getenv("KZ3_VM_FAST");
+@@ -1682,7 +1753,7 @@
+     const int on = en && *en && *en != '0' && ppu_vm_size == 0;
+     const int rdf = on && rq;
+     const int inl = ei && *ei && *ei != '0' && rq;
+-    const int wrf = on && !getenv("PPU_WVAL") && !getenv("PPU_WWATCH");
++    const int wrf = on && !getenv("PPU_WVAL") && !getenv("PPU_WWATCH") && !getenv("PPU_WWATCH_FN");   /* 7018 */
+     s_vm_wr_fast = wrf;
+     if (inl) vm_inline_open();
+     __atomic_store_n(&s_vm_rd_fast, rdf, __ATOMIC_RELEASE);
+@@ -1867,6 +1938,7 @@
+     return __builtin_bswap32(v); }
+ uint64_t vm_read64(uint64_t a) { VM_RD_FAST(a, uint64_t, 8, __builtin_bswap64);   /* patch 1080 */
+     if (vm_oob((uint32_t)a,8)) return 0; vm_hotmap((uint32_t)a,8);
++    ppu_rwatch_hit((uint32_t)a, 8, __builtin_return_address(0));   /* 7018: ld/lfd were not watched */
+     if ((uint32_t)a < 0x10000u) ppu_null_read_report((uint32_t)a, 8, __builtin_return_address(0)); uint64_t v; memcpy(&v, vm_base + (uint32_t)a, 8);
+ #ifdef VM_SAMPLE_READS
+     { static uint64_t c=0; if ((++c % 2000000ull)==0) fprintf(stderr, "[sample] read64 0x%08X\n", (uint32_t)a); }
+@@ -1929,6 +2001,49 @@
+ }
+ static inline void barrier_watch_hit(uint32_t a, uint32_t v, int width, void* ra)
+ {
++    /* patch 7018 diagnostic: PPU_WWATCH_FN=<hex guest function>: log every vm_write* store made by that guest
++     * function (the host return address resolved like the other watches), with the address, so an object whose
++     * address is unknown can be found from the function that fills it. PPU_WWATCH_FN_MAX=<n> (default 64, 0 =
++     * unlimited). Out-of-line stores only (vm_write*); the lifted code's inline stores (stvx, dcbz, *brx) are not seen. */
++    { static int64_t s_wf = -2; static long s_wfmax = 64;
++      if (s_wf == -2) { const char* e = getenv("PPU_WWATCH_FN"); s_wf = e ? (int64_t)strtoul(e, 0, 16) : -1;
++                        const char* m = getenv("PPU_WWATCH_FN_MAX"); if (m) s_wfmax = atol(m); }
++      if (s_wf >= 0 && ppu_prof_resolve_host(ra) == (uint32_t)s_wf) {
++          if (g_rw_follow < 0) g_rw_follow = getenv("PPU_RWATCH_FOLLOW") != NULL;
++          /* PPU_RWATCH_FOLLOW_VAL=<hex>[,width]: instead of the A, A+0xC pattern, follow the address of the first
++           * store of that value and width (default 2) by this function, e.g. the 0x200 sensor defaults of C6F68. */
++          static long s_fv = -2; static int s_fvw = 2;
++          if (s_fv == -2) { const char* e = getenv("PPU_RWATCH_FOLLOW_VAL"); s_fv = e ? (long)strtoul(e, 0, 16) : -1;
++                            const char* c = e ? strchr(e, ',') : NULL; if (c) s_fvw = atoi(c + 1); }
++          if (g_rw_follow && s_fv >= 0) {
++              if (width == s_fvw && v == (uint32_t)s_fv) {
++                  int k, n = g_rw_follow_n;
++                  for (k = 0; k < n && g_rw_follow_lo[k] != a; k++) {}
++                  if (k == n && n < 8) { g_rw_follow_lo[n] = a; g_rw_follow_n = n + 1;
++                      fprintf(stderr, "[rw-follow] watching object window %d: 0x%08X..0x%08X\n", n, a, a + 0x10); }
++              }
++          } else if (g_rw_follow && width == 4) {
++              static uint32_t s_prev = 0;
++              if (s_prev && a == s_prev + 0xC) {
++                  int k, n = g_rw_follow_n;
++                  for (k = 0; k < n && g_rw_follow_lo[k] != s_prev; k++) {}
++                  /* full: replace the oldest window, so objects created late (a minigame's own pad object) are watched */
++                  static unsigned s_rr = 0;
++                  if (k == n) { int slot = n < 8 ? n : (int)(s_rr++ % 8u); g_rw_follow_lo[slot] = s_prev;
++                      if (n < 8) g_rw_follow_n = n + 1;
++                      fprintf(stderr, "[rw-follow] watching object window %d: 0x%08X..0x%08X\n", slot, s_prev, s_prev + 0x10); }
++              }
++              s_prev = a;
++          }
++          static long _wn = 0; long k = ++_wn;
++          if (s_wfmax == 0 || k <= s_wfmax) {
++              extern PPU_THREAD_LOCAL ppu_context* g_active_ctx;
++              fprintf(stderr, "[wfn] n=%ld 0x%08X <- 0x%X (w%d) guest-fn=0x%08X lr=0x%08X tid=%u\n", k, a, v, width,
++                      (uint32_t)s_wf, g_active_ctx ? (uint32_t)g_active_ctx->lr : 0u,
++                      g_active_ctx ? (unsigned)g_active_ctx->thread_id : 0u);
++          } else if (k == s_wfmax + 1)
++              fprintf(stderr, "[wfn] --- print cap %ld reached (raise PPU_WWATCH_FN_MAX, 0 = unlimited) ---\n", s_wfmax);
++      } }
+     /* PPU_WVAL=<hexvalue>: log every PPU store that WRITES this value, wherever
+      * it lands. PPU_WWATCH answers "who writes this address"; when a bad value is
+      * copied from node to node down a list, that only ever catches the copy.
+diff --git a/tools/ppu_lifter.py b/tools/ppu_lifter.py
+--- a/tools/ppu_lifter.py
++++ b/tools/ppu_lifter.py
+@@ -521,6 +521,18 @@
+              ppu_store_note((uint32_t)(ea), (n)); } while (0)
+ /* ---- KZ3 patch 2082 end ---- */
+ 
++/* ---- patch 7018: PPU_RWATCH for the loads that bypass vm_read* (lvx, lvlx, lvrx, lvebx/ehx/ewx, lwbrx, lhbrx, ldbrx) ----
++ * Compiled in only with -DPPU_RW_HOOKS (a diagnostic build); otherwise PPU_RW is empty and these loads cost nothing.
++ * With it, g_ppu_rw_on is set by the runtime when PPU_RWATCH is in the environment; unset, each such load pays one
++ * byte load and a not-taken branch. The runtime logs the range and the call site (ppu_loader.cpp, ppu_rwatch_raw). */
++#ifdef PPU_RW_HOOKS
++extern "C" int g_ppu_rw_on;
++extern "C" void ppu_rwatch_raw(uint64_t ea, uint32_t n);
++#define PPU_RW(ea, n) do { if (__builtin_expect(g_ppu_rw_on, 0)) ppu_rwatch_raw((ea), (n)); } while (0)
++#else
++#define PPU_RW(ea, n) do { } while (0)
++#endif
++
+ /* Indirect call dispatch (bctrl/bctr) — implemented by the game project.
+  * Looks up the guest address in CTR via a hash table and calls the
+  * corresponding host function. Handles OPD resolution. */
+@@ -2672,7 +2684,7 @@
+         if mn == "lwbrx":
+             rd, ra, rb = _reg_idx(ops[0]), _reg_idx(ops[1]), _reg_idx(ops[2])
+             return (f"{{ uint64_t ea = {_xea(ra,rb)}; "
+-                    f"uint32_t raw = VM_RAW_LD(uint32_t, ea); "
++                    f"PPU_RW(ea, 4); uint32_t raw = VM_RAW_LD(uint32_t, ea); "
+                     f"ctx->gpr[{rd}] = raw; }}") # NOTE: no bswap — reads in host (LE) order
+ 
+         if mn == "stwbrx":
+@@ -2684,7 +2696,7 @@
+         if mn == "lhbrx":
+             rd, ra, rb = _reg_idx(ops[0]), _reg_idx(ops[1]), _reg_idx(ops[2])
+             return (f"{{ uint64_t ea = {_xea(ra,rb)}; "
+-                    f"uint16_t raw = VM_RAW_LD(uint16_t, ea); "
++                    f"PPU_RW(ea, 2); uint16_t raw = VM_RAW_LD(uint16_t, ea); "
+                     f"ctx->gpr[{rd}] = raw; }}")
+ 
+         if mn == "ldbrx":
+@@ -2693,7 +2705,7 @@
+             # as lhbrx above.
+             rd, ra, rb = _reg_idx(ops[0]), _reg_idx(ops[1]), _reg_idx(ops[2])
+             return (f"{{ uint64_t ea = {_xea(ra,rb)}; "
+-                    f"uint64_t raw = VM_RAW_LD(uint64_t, ea); "
++                    f"PPU_RW(ea, 8); uint64_t raw = VM_RAW_LD(uint64_t, ea); "
+                     f"ctx->gpr[{rd}] = raw; }}")
+ 
+         if mn == "sthbrx":
+@@ -2828,7 +2840,7 @@
+             ra = _reg_idx(ops[1])
+             rb = _reg_idx(ops[2])
+             return (f"{{ uint64_t ea = ({_xea(ra,rb)}) & ~0xFULL; "
+-                    f"vm_raw_ld16(&ctx->vr[{vd}], ea); }}")
++                    f"PPU_RW(ea, 16); vm_raw_ld16(&ctx->vr[{vd}], ea); }}")
+ 
+         if mn in ("stvx", "stvxl"):
+             vs = int(ops[0][1:]) if ops[0].startswith("v") else _reg_idx(ops[0])
+@@ -2848,6 +2860,7 @@
+             rb = _reg_idx(ops[2])
+             return (f"{{ uint64_t ea = {_xea(ra,rb)}; "
+                     f"uint32_t sh = (uint32_t)(ea & 0xF); "
++                    f"PPU_RW(ea, 16u - sh); "
+                     f"uint8_t* m = vm_base + (uint32_t)(ea & ~0xFULL); "
+                     f"uint8_t* d = (uint8_t*)&ctx->vr[{vd}]; "
+                     f"for (int i = 0; i < 16; i++) d[i] = (sh + (uint32_t)i < 16) ? m[sh + i] : 0; }}")
+@@ -2858,6 +2871,7 @@
+             rb = _reg_idx(ops[2])
+             return (f"{{ uint64_t ea = {_xea(ra,rb)}; "
+                     f"uint32_t sh = (uint32_t)(ea & 0xF); "
++                    f"if (sh) PPU_RW(ea & ~0xFULL, sh); "
+                     f"uint8_t* m = vm_base + (uint32_t)(ea & ~0xFULL); "
+                     f"uint8_t* d = (uint8_t*)&ctx->vr[{vd}]; "
+                     f"for (int i = 0; i < 16; i++) d[i] = ((uint32_t)i >= 16u - sh) ? m[i - (int)(16u - sh)] : 0; }}")
+@@ -2873,7 +2887,7 @@
+             return (f"{{ uint64_t ea = {_xea(ra,rb)}; "
+                     f"ea &= ~{size - 1}ULL; "
+                     f"memset(&ctx->vr[{vd}], 0, 16); "
+-                    f"{{ uint{size*8}_t _e = VM_RAW_LD(uint{size*8}_t, ea); "
++                    f"{{ PPU_RW(ea, {size}); uint{size*8}_t _e = VM_RAW_LD(uint{size*8}_t, ea); "
+                     f"memcpy((uint8_t*)&ctx->vr[{vd}] + (ea & 15), &_e, {size}); }} }}")
+ 
+         if mn == "stvebx" or mn == "stvehx" or mn == "stvewx":
+diff --git a/libs/system/sysPrxForUser.c b/libs/system/sysPrxForUser.c
+--- a/libs/system/sysPrxForUser.c
++++ b/libs/system/sysPrxForUser.c
+@@ -386,10 +386,11 @@
+     return dst;
+ }
+ 
++extern void ppu_rwatch_range(const void* host_src, u32 n);   /* patch 7018: PPU_RWATCH covers HLE bulk reads */
+ void* _sys_memcpy(void* dst, const void* src, u32 size)
+ {
+     void* d = yz_g2h(dst); const void* s = yz_g2h(src);
+-    if (d && s) memcpy(d, s, size);
++    if (d && s) { ppu_rwatch_range(s, size); memcpy(d, s, size); }
+     return dst;
+ }
+ 
+@@ -397,6 +398,7 @@
+ {
+     const void* a = yz_g2h(s1); const void* b = yz_g2h(s2);
+     if (!a || !b) return 0;
++    ppu_rwatch_range(a, size); ppu_rwatch_range(b, size);
+     return memcmp(a, b, size);
+ }
+ 
+diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
+--- a/libs/input/cellPad.c
++++ b/libs/input/cellPad.c
+@@ -1212,7 +1212,15 @@
+ s32 cellPadGetData(u32 port_no, CellPadData* data_guest)
+ {
+     { static int _once = 0;
+-      if (!_once++) printf("[cellPad] GetData polling begins (port %u)\n", port_no); }
++      if (!_once++) printf("[cellPad] GetData polling begins (port %u)\n", port_no);
++      /* patch 7018 diagnostic (CELLPAD_BUFLOG=1): each distinct (port, guest buffer) once, to arm PPU_RWATCH on the
++         raw pad data. */
++      static int s_log = -1; static unsigned int s_seen[8][2]; static int s_n = 0;
++      unsigned int ea = (unsigned int)(uintptr_t)data_guest; int k;
++      if (s_log < 0) s_log = getenv("CELLPAD_BUFLOG") ? 1 : 0;
++      for (k = 0; k < s_n && !(s_seen[k][0] == port_no && s_seen[k][1] == ea); k++) {}
++      if (s_log && k == s_n && s_n < 8) { s_seen[s_n][0] = port_no; s_seen[s_n][1] = ea; s_n++;
++          printf("[cellPad] GetData port %u buffer 0x%08X\n", port_no, ea); } }
+     if (!s_pad_initialized)
+         return CELL_PAD_ERROR_NOT_OPENED;
+ 
+diff --git a/runtime/spu/spu_dma.h b/runtime/spu/spu_dma.h
+--- a/runtime/spu/spu_dma.h
++++ b/runtime/spu/spu_dma.h
+@@ -29,6 +29,12 @@
+ #endif
+ 
+ extern uint8_t* vm_base;
++/* SPU_DMAWATCH diagnostic (defined in spu_channels.c): -1 = env not read yet, 0 = off, >0 = number of ranges. */
++extern int g_spu_dmaw_n;
++void spu_dmawatch_slow(uint32_t ea, uint32_t size, uint32_t lsa, uint32_t tag, int image, uint32_t pc);
++#define SPU_DMAWATCH_GET(ea_, size_, lsa_, tag_, img_, pc_) \
++    do { if (__builtin_expect(g_spu_dmaw_n != 0, 0)) \
++        spu_dmawatch_slow((uint32_t)(ea_), (uint32_t)(size_), (uint32_t)(lsa_), (uint32_t)(tag_), (int)(img_), (uint32_t)(pc_)); } while (0)
+ 
+ /* Guard against a guest DMA whose effective address lands in reserved-but-
+  * uncommitted guest memory (the 4 GB VM is MEM_RESERVE; only main mem / RSX /
+@@ -649,6 +655,7 @@
+               }
+           } }
+         /* GET: main memory -> local store */
++        SPU_DMAWATCH_GET(ea, size, lsa, spu->mfc_tag, spu->image_id, spu->pc);
+         memcpy(ls_ptr, ea_ptr, size);
+         /* SPU_STACKEA_WATCH (b): scan the just-loaded payload for a 0xD00Cxxxx
+          * dword = the completion-word EA arriving in a job buffer. */
+diff --git a/runtime/spu/spu_channels.c b/runtime/spu/spu_channels.c
+--- a/runtime/spu/spu_channels.c
++++ b/runtime/spu/spu_channels.c
+@@ -75,6 +75,38 @@
+  * and writes) in every SPU image. See spu_ls_watch_hit2 for the fast path. */
+ #define SPU_WATCH_MAX 4
+ int g_spu_ls_watch_n SPU_READ_MOSTLY = -1;   /* KZ3 patch 1102 */
++/* SPU_DMAWATCH=<hexlo>-<hexhi>[,...] (up to 8): print every main-memory -> LS read overlapping a range
++ * (mfc GET/GETL elements, GETLLAR, raw-SPU GET). SPU_DMAWATCH_MAX caps the lines (default 2000). */
++int g_spu_dmaw_n = -1;
++static uint32_t s_dmaw_lo[8], s_dmaw_hi[8];
++static unsigned s_dmaw_max = 2000, s_dmaw_cnt;
++void spu_dmawatch_slow(uint32_t ea, uint32_t size, uint32_t lsa, uint32_t tag, int image, uint32_t pc)
++{
++    if (g_spu_dmaw_n < 0) {
++        const char* e = getenv("SPU_DMAWATCH"); const char* m = getenv("SPU_DMAWATCH_MAX");
++        int n = 0;
++        if (m && atoi(m) > 0) s_dmaw_max = (unsigned)atoi(m);
++        while (e && *e && n < 8) {
++            char* q; uint32_t lo = (uint32_t)strtoul(e, &q, 16);
++            if (*q != '-') break;
++            uint32_t hi = (uint32_t)strtoul(q + 1, &q, 16);
++            s_dmaw_lo[n] = lo; s_dmaw_hi[n] = hi; n++;
++            if (*q != ',') break;
++            e = q + 1;
++        }
++        __atomic_store_n(&g_spu_dmaw_n, n, __ATOMIC_RELEASE);
++    }
++    for (int i = 0; i < g_spu_dmaw_n; i++) {
++        if ((uint64_t)ea + size > s_dmaw_lo[i] && ea < s_dmaw_hi[i]) {
++            if (__atomic_fetch_add(&s_dmaw_cnt, 1, __ATOMIC_RELAXED) < s_dmaw_max) {
++                printf("[dmawatch] GET ea=0x%08X size=0x%X ls=0x%05X tag=%u spu=%d pc=0x%05X\n", ea, size, lsa, tag, image, pc);
++                fflush(stdout);
++            }
++            return;
++        }
++    }
++}
++
+ /* DMA watch windows set at run time (spu_dma.h, mfc_do_transfer). */
+ volatile uint32_t g_spu_dma_watch_lo[SPU_DMA_WATCH_SLOTS], g_spu_dma_watch_hi[SPU_DMA_WATCH_SLOTS];
+ volatile long g_spu_dma_watch_hits[SPU_DMA_WATCH_SLOTS];
+@@ -673,6 +705,7 @@
+         /* KZ3 patch 1056: the bitmap mark, the one read into `ls`, the snapshot
+          * from `ls` and the reservation publish, under the line's sequence
+          * count (or its stripe after 64 tries), in spu_coherency.c. */
++        SPU_DMAWATCH_GET(ea, MFC_ATOMIC_LINE, lsa, ctx->mfc_tag, ctx->image_id, ctx->pc);
+         spu_ll_getllar(ctx, ea, ls, mem);
+         /* MFC_RdAtomicStat after a GETLLAR reads 4 (GETLLAR complete), not 0:
+          * Havok's SPU allocator (GH3 collide task, LS 0xA66C) re-issues the
+diff --git a/runtime/spu/spu_raw.c b/runtime/spu/spu_raw.c
+--- a/runtime/spu/spu_raw.c
++++ b/runtime/spu/spu_raw.c
+@@ -27,6 +27,7 @@
+  */
+ 
+ #include "spu_raw.h"
++#include "spu_dma.h"
+ #include "spu_context.h"
+ #include "spu_workload.h"
+ #include "spu_lifted_job.h"
+@@ -445,6 +446,7 @@
+         if (lsa + size > SPU_LS_SIZE) size = SPU_LS_SIZE - lsa;
+         uint8_t* ls = vm_base + s->base + lsa;
+         if (cmd & 0x40u) {                                      /* GET: EA -> LS */
++            SPU_DMAWATCH_GET(ea, size, lsa, be32_load(s->base + SPU_RAW_MFC_SIZE_TAG) & 31u, 0x1000 + (int)(s - s_spu), 0);
+             memcpy(ls, vm_base + ea, size);
+             int r = 0;
+             while (r < s->get_runs && s->get_hi[r] != lsa) r++;

@@ -1,0 +1,67 @@
+Credit: ps3recomp PR #332 by @erikomis (MIT), "rsx: Y16_X16 and HILO8 crossbars present R-G-R-G, or R-R-R-G with the override", https://github.com/sp00nznet/ps3recomp/pull/332.
+diff --git a/libs/video/rsx_texture_layout.c b/libs/video/rsx_texture_layout.c
+index bdb1a9da..8969c070 100644
+--- a/libs/video/rsx_texture_layout.c
++++ b/libs/video/rsx_texture_layout.c
+@@ -323,6 +323,26 @@ void rsx_texture_component_remap(u32 control1, u32 rsx_fmt, u8 out[4])
+ 
+     if (!(control1 & 0xFFFFu)) control1 = 0xAAE4u;   /* unset -> identity */
+ 
++    /* Y16_X16 (and HILO8): two 16-bit channels whose crossbar is encoded in
++     * 16-bit blocks -- 0xE4 or 0x4E only -- and presented interleaved
++     * R-G-R-G, or R-R-R-G when CONTROL1's high word (the remap override,
++     * bit 16) is set (RPCS3 fragment_texture::decoded_remap, verified on
++     * hardware with Virtua Fighter 5 / Mass Effect 3). Through the plain
++     * ARGB table a .w read got the resource's empty alpha, 1.0, instead of
++     * Y: inFAMOUS 2's water reads its 64x64 wave map through .yw that way. */
++    if (base == 0x95u || base == 0x98u || base == 0x99u) {
++        const int ovr = (control1 >> 16) & 0xFFFFu;
++        u32 lo = control1 & 0xFFu;
++        switch (lo) {
++        case 0xE4: lo = ovr ? 0x56u : 0x66u; break;
++        case 0x4E: lo = ovr ? 0xA9u : 0x99u; break;
++        case 0xEE: lo = 0xAAu; break;
++        case 0x44: lo = 0x55u; break;
++        default: break;
++        }
++        control1 = (control1 & ~0xFFu) | lo;
++    }
++
+     /* i runs A, R, G, B -- the crossbar's field order, LSB first. */
+     for (int i = 0; i < 4; i++) {
+         u32 s  = (control1 >> (i * 2)) & 3u;
+diff --git a/libs/video/tests/test_texture_layout.c b/libs/video/tests/test_texture_layout.c
+index 9856a4b4..166d5491 100644
+--- a/libs/video/tests/test_texture_layout.c
++++ b/libs/video/tests/test_texture_layout.c
+@@ -716,6 +716,22 @@ static void test_expand_mask(void)
+     CHECK_EQ(rsx_texture_expand_mask(0x94u, 0xAAE4u, 0u, 0u), 0);
+ }
+ 
++/* Y16_X16: 0xE4 presents R-G-R-G (RGBA = X,Y,X,Y); with CONTROL1's high word
++ * (the remap override) set, R-R-R-G (X,X,X,Y). 0x4E swaps the pair
++ * (RPCS3 fragment_texture::decoded_remap). */
++static void test_remap_y16x16_lanes(void)
++{
++    u8 m[4];
++    rsx_texture_component_remap(0xAAE4u, 0x95u, m);
++    CHECK_EQ(m[R_], 0); CHECK_EQ(m[G_], 1); CHECK_EQ(m[B_], 0); CHECK_EQ(m[A_], 1);
++    rsx_texture_component_remap(0x0001AAE4u, 0x95u, m);
++    CHECK_EQ(m[R_], 0); CHECK_EQ(m[G_], 0); CHECK_EQ(m[B_], 0); CHECK_EQ(m[A_], 1);
++    rsx_texture_component_remap(0xAA4Eu, 0x95u, m);
++    CHECK_EQ(m[R_], 1); CHECK_EQ(m[G_], 0); CHECK_EQ(m[B_], 1); CHECK_EQ(m[A_], 0);
++    rsx_texture_component_remap(0x0001AA4Eu, 0x95u, m);
++    CHECK_EQ(m[R_], 1); CHECK_EQ(m[G_], 1); CHECK_EQ(m[B_], 1); CHECK_EQ(m[A_], 0);
++}
++
+ static void test_remap_rejects_null(void)
+ {
+     rsx_texture_component_remap(0xAAE4u, FMT_A8R8G8B8, NULL);   /* must not crash */
+@@ -745,6 +761,7 @@ int main(void)
+     test_remap_identity();
+     test_remap_identity_packs_to_d3d_default();
+     test_remap_b8_lanes();
++    test_remap_y16x16_lanes();
+     test_remap_field_order_is_not_reversed();
+     test_remap_force_zero_and_one();
+     test_remap_g8b8_lanes();
