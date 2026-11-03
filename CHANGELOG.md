@@ -12,6 +12,10 @@ project has no release yet and is partly playable: see [RELEASE-CRITERIA.md](doc
 - Keyboard input with the game's original controls, and pads through SDL3 (a DualShock 4 played by hand; other pads untested). On a pad without a motion sensor, or on the keyboard, the right stick stands in for motion.
 - The game writes its save. Loading it after a restart is not checked.
 - The PPU code (about 15,000 functions) and 17 SPU programs are translated to C ahead of time and built into one Windows x64 exe from your own copy of the game; see [docs/BUILDING.md](docs/BUILDING.md).
+- A project site, https://undecuple.github.io/paatii-neko/, generated from the same pages as the repository.
+
+### Fixed
+- A Game mode category label that was too long for its button is now narrowed to fit, as the game asks, instead of being cut off.
 
 ### Known gaps
 - Sound, the other minigames, Gallery text, Extras, Options, Japanese text, trophies and online features are untested or not implemented; see [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) and [docs/FEATURES.md](docs/FEATURES.md).

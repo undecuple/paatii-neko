@@ -3,7 +3,7 @@ ps3	Boot and menus	Publisher and studio logos	Shown at every start	works	Play to
 ps3	Boot and menus	Title screen	3D scene, logo and “Press button”	partial	Draws; its 3D background used to stay black in some runs. Two causes were fixed on 2026-10-26 (a command-stream form the runtime did not read, and the guest flip handler called too early); two long runs of the book's room scene then drew it correctly; the title needs more runs
 ps3	Boot and menus	Attract movie when the title idles	Plays a movie	not yet	Movie playback (cellSail) is not implemented
 ps3	Boot and menus	Main menu	Story, Game, Gallery, Extras, Options, with a help line	works	2026-10-20 runs: the menu draws and takes input
-ps3	Boot and menus	Menu labels and titles	Full-size text	partial	Game mode category labels and titles draw in full since 2026-10-26; one long label is still cut off
+ps3	Boot and menus	Menu labels and titles	Full-size text	partial	Game mode category labels and titles draw in full since 2026-10-26, and the long one is narrowed to fit since 2026-11-03; the Gallery's labels not checked again
 ps3	Story	Memory book with photos, narration and speech bubbles	Page through the book	works	2026-10-20 runs; hand play 2026-10-21
 ps3	Story	Real-time 3D story scenes	Toro in his room, speech bubbles advanced with Cross	works	2026-10-20 runs; hand play 2026-10-21 through episode 2 to “To Be Continued”
 ps3	Story	Paging back and forth	Pages turn cleanly	partial	Hand play 2026-10-21: text can overlap the page images after paging; pages load slowly

@@ -108,7 +108,8 @@ Bug reports are welcome through the issue forms. Pull requests are not being tak
 forking the project: [docs/FORKING.md](docs/FORKING.md). General fixes found here are offered to ps3recomp upstream.
 Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md).
 
-**Official channels:** パーティー猫！ is made by **undecuple**: GitHub [@undecuple](https://github.com/undecuple).
+**Official channels:** パーティー猫！ is made by **undecuple**: GitHub [@undecuple](https://github.com/undecuple), Reddit
+[u/RelationshipNo4440](https://www.reddit.com/user/RelationshipNo4440), Discord **itekso.** (on the ps3recomp server).
 Builds and fixes come only from this repository; we never ask anyone to paste a command into PowerShell or a
 terminal, or to run a file from someone else. Anyone else offering builds, "fixes" or donations in this project's
 name is not us.

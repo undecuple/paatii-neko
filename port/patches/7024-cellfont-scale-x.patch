@@ -1,0 +1,68 @@
+cellFont: cellFontSetScalePixel's width scales the horizontal metrics and glyph bitmaps.
+Toro's own patch (7xxx).
+What: font_face_scale_x takes the x scale from scale_x (the w of cellFontSetScalePixel(font, w, h)) with the same
+cell formula as the vertical scale; the advance, the horizontal bearing, the bitmap box and the glyph bitmap use it.
+A scale_x that is not positive falls back to scale_y.
+Why: the game fits a label that is too wide for its surface by measuring it at w = h and then calling
+SetScalePixel(w', h) with a smaller w'. The runtime used only the height, so the label was drawn at full width and
+cut: "Motion Sensor Compatible" measures 431.3 px at 38 x 38 against its 327 px surface, then SetScalePixel(28, 38)
+(font trace, run fs5).
+Tests: run fs7 (Game menu): the label is drawn whole inside its button (advances sum to 317.8 px), the other
+labels unchanged.
+--- a/libs/font/cellFont.c
++++ b/libs/font/cellFont.c
+@@ -231,6 +231,18 @@
+     return (a - d) > 0 ? px / (float)(a - d) : 0.0f;
+ }
+ 
++/* Patch 7024: the horizontal scale. cellFontSetScalePixel(font, w, h) sets the glyph width and height in pixels
++ * independently; Toro fits a label that is too wide for its surface by measuring it at w = h and then calling
++ * SetScalePixel(w', h) with w' = floor(h * surfaceWidth / measuredWidth) (EBOOT 0x14AA88 area; trace: "Motion Sensor
++ * Compatible" measures 431.3 px at 38 x 38 against a 327 px surface, then SetScalePixel(28, 38)). The same cell
++ * formula as the vertical scale (font_face_metrics) applies to x, so the advances, bearings and bitmaps shrink by
++ * w / h. A scale_x that is not positive falls back to scale_y. */
++static float font_face_scale_x(const stbtt_fontinfo* f, const FontSlot* slot)
++{
++    const float px = slot->scale_x > 0.0f ? slot->scale_x : slot->scale_y;
++    return font_face_metrics(f, px, NULL, NULL, NULL);
++}
++
+ static float font_get_stb_scale(FontSlot* slot)
+ {
+     if (!slot->stb_valid) return 0.0f;
+@@ -667,18 +679,19 @@
+             return CELL_OK;
+         }
+         float scale = font_face_metrics(&face, slot->scale_y, NULL, NULL, NULL);
++        const float scalex = font_face_scale_x(&face, slot);   /* Toro patch 7024 */
+ 
+         int advanceWidth, leftSideBearing;
+         stbtt_GetGlyphHMetrics(&face, glyph, &advanceWidth, &leftSideBearing);
+ 
+         int x0, y0, x1, y1;
+-        stbtt_GetGlyphBitmapBox(&face, glyph, scale, scale, &x0, &y0, &x1, &y1);
++        stbtt_GetGlyphBitmapBox(&face, glyph, scalex, scale, &x0, &y0, &x1, &y1);
+ 
+         metrics->width      = (float)(x1 - x0);
+         metrics->height     = (float)(y1 - y0);
+-        metrics->h_bearing_x = (float)leftSideBearing * scale;
++        metrics->h_bearing_x = (float)leftSideBearing * scalex;
+         metrics->h_bearing_y = (float)(-y0);
+-        metrics->h_advance  = (float)advanceWidth * scale;
++        metrics->h_advance  = (float)advanceWidth * scalex;
+         metrics->v_advance  = metrics->height;
+ 
+         return CELL_OK;
+@@ -945,9 +958,10 @@
+     int glyph = 0;
+     if (!font_face_glyph(slot, code, &face, &glyph)) return CELL_OK;
+     const float scale = font_face_metrics(&face, slot->scale_y, NULL, NULL, NULL);
+-    if (!(scale > 0.0f)) return CELL_OK;
++    const float scalex = font_face_scale_x(&face, slot);   /* Toro patch 7024 */
++    if (!(scale > 0.0f) || !(scalex > 0.0f)) return CELL_OK;
+     int bw = 0, bh = 0, bx = 0, by = 0;
+-    u8* bitmap = stbtt_GetGlyphBitmap(&face, scale, scale, glyph, &bw, &bh, &bx, &by);
++    u8* bitmap = stbtt_GetGlyphBitmap(&face, scalex, scale, glyph, &bw, &bh, &bx, &by);
+     if (!bitmap) return CELL_OK;   /* a blank glyph (space) */
+ 
+     /* Bitmap top-left on the surface: origin (rounded to a pixel) plus stb's offsets (by < 0 is above the baseline). */

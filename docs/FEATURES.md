@@ -13,7 +13,7 @@ PS3 features: 24 (works 8, partial 9, not yet 4, not yet verified 3). Estimated 
 | Title screen | 3D scene, logo and “Press button” | **partial** | Draws; its 3D background used to stay black in some runs. Two causes were fixed on 2026-10-26 (a command-stream form the runtime did not read, and the guest flip handler called too early); two long runs of the book's room scene then drew it correctly; the title needs more runs |
 | Attract movie when the title idles | Plays a movie | **not yet** | Movie playback (cellSail) is not implemented |
 | Main menu | Story, Game, Gallery, Extras, Options, with a help line | **works** | 2026-10-20 runs: the menu draws and takes input |
-| Menu labels and titles | Full-size text | **partial** | Game mode category labels and titles draw in full since 2026-10-26; one long label is still cut off |
+| Menu labels and titles | Full-size text | **partial** | Game mode category labels and titles draw in full since 2026-10-26, and the long one is narrowed to fit since 2026-11-03; the Gallery's labels not checked again |
 
 ## Story
 

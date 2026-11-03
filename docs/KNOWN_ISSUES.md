@@ -44,7 +44,8 @@ and build they were measured on and are not given here.
 ## Cut-off text
 
 Some menu labels and titles are cut off, and the Gallery's labels are cut off in the same way. Game mode's category
-labels and titles draw in full; one long label is still cut off. Latin text needs the PS3 system fonts from your own
+labels and titles draw in full, and since 2026-11-03 the one long label is narrowed to fit its button, as the game
+asks; the Gallery's labels have not been checked again since. Latin text needs the PS3 system fonts from your own
 console's firmware. Japanese text has not been checked.
 
 ## Book paging
