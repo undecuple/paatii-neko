@@ -27,7 +27,8 @@ from the developer's own copy of the game.
 ## Licence
 
 The port's own code, tools and documentation are MIT ([LICENSE](LICENSE)). The licence covers nothing of the game
-itself. Third-party parts keep their own terms; their full licence texts are in [licenses/](licenses/README.md).
+itself: it grants no rights to *TORO ! Let's Party !* or any other software, data or trademark of Sony Interactive
+Entertainment or the game's makers and publishers. Third-party parts keep their own terms; their full licence texts are in [licenses/](licenses/README.md).
 
 | Component | Use | Licence |
 |---|---|---|
