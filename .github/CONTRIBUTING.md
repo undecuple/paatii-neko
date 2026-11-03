@@ -1,8 +1,9 @@
 # Contributing
 
-Issues and pull requests are not being taken yet. This page says what will apply once they are.
+Bug reports are welcome through the issue forms. Pull requests are not being taken yet; the ground rules below say
+what will apply once they are.
 
-## Ground rules (for later)
+## Ground rules
 
 - **No game material, ever:** no files from a disc or update, no decrypted or translated game code, no extracted
   assets, saves, keys or firmware, and no links to where they can be downloaded. Numbers, names, structure layouts
@@ -12,7 +13,7 @@ Issues and pull requests are not being taken yet. This page says what will apply
   [ps3recomp](https://github.com/sp00nznet/ps3recomp). Here it lives as a patch in `port/patches/` until upstream
   takes it.
 
-## Reporting a problem (for later)
+## Reporting a problem
 
 Say which build you ran (commit), your GPU and driver, Windows or Proton (and which Proton), and attach the run's
 log. Remove your user name and folder paths from the log first. Do not attach save files, memory dumps or anything

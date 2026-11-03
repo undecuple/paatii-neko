@@ -138,13 +138,17 @@ and this repository contains no AI-made art.
 
 ## Contributing
 
-Pull requests are not being taken yet; see [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md).
+Bug reports go through the issue forms (see [Reporting bugs](#reporting-bugs)). Pull requests are not being taken
+yet; see [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
 ## Credits, licence and related projects
 
 - **Built on [ps3recomp](https://github.com/sp00nznet/ps3recomp)**, the static recompiler and runtime.
 - **[RPCS3](https://github.com/RPCS3/rpcs3):** the PS3 emulator, used as the reference for how the game should look and
   behave (read, never copied).
+- **Sister ports by the same author:** [project-helghast](https://github.com/undecuple/project-helghast) (Killzone 3)
+  and [project-pyrrhus](https://github.com/undecuple/project-pyrrhus) (Killzone 2), unofficial PC ports by static
+  recompilation.
 - **Licence:** the port's own code, tools and documentation are [MIT](LICENSE). Third-party components and credits:
   [NOTICE.md](NOTICE.md); full licence texts: [licenses/](licenses/README.md). The licence covers nothing of the game
   itself.

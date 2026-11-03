@@ -37,7 +37,7 @@ itself. Third-party parts keep their own terms; their full licence texts are in 
 | GCC 16.2.0 runtime (libgcc, libstdc++), [MinGW-w64](https://www.mingw-w64.org) 14.0.0, [MCF Gthread](https://github.com/lhmouse/mcfgthread) 2.4.2 | linked statically into the exe by the build toolchain | GPL-3.0 with the GCC Runtime Library Exception; ZPL-2.1 and public domain; LGPL-3.0+ with the same exception |
 | [RPCS3](https://github.com/RPCS3/rpcs3) | reference for PS3 behaviour and data layouts, read only; no RPCS3 code is included | GPL-2.0, not used as code |
 
-The port's patch series started from the Killzone 3 port by the same author and carries the credits that series
+The port's patch series started from the [Killzone 3 port](https://github.com/undecuple/project-helghast) by the same author and carries the credits that series
 names (contributors to ps3recomp whose work was adapted are credited in each patch header). Where a format is
 documented only in GPL code, the implementation is written from a prose specification by someone who did not read that
 code, so the port stays MIT.
@@ -47,8 +47,10 @@ code, so the port stays MIT.
 Our ps3recomp patches (`port/patches/`) carry work from other ps3recomp pull requests and forks (MIT) and from the
 author's sister ports. Each patch header names its source.
 
-- **Killzone 3 port** (the author's own port, MIT): patches `0xxx`-`5xxx` and `9933`, carried
-  from that port's patch series, unchanged or rebased.
+- **[Killzone 3 port](https://github.com/undecuple/project-helghast)** (the author's own port, MIT): patches `0xxx`-`5xxx`
+  and `9933`, carried from that port's patch series, unchanged or rebased.
+- **[Killzone 2 port](https://github.com/undecuple/project-pyrrhus)** (the author's own port, MIT): the host files in
+  `port/tlp/` and `tools/build-tlp.sh` were adapted from it, and patch 1059's per-waiter lwcond FIFO follows its patch 6005.
 - **NoahBPeterson:** [PR #287](https://github.com/sp00nznet/ps3recomp/pull/287),
   [PR #213](https://github.com/sp00nznet/ps3recomp/pull/213) and the fork's commits e68e567, b709a08 and e3ab49d
   (patches 1071, 1074, 1055, 1056): SPU extended-range single precision (exact per-element code, #287), the per-SPU
