@@ -1,6 +1,6 @@
 # Licence texts
 
-Full licence texts of the third-party parts this repository builds with or renders, copied unchanged. The short
+Full licence texts of the third-party parts this repository builds with, renders or ships subsets of, copied unchanged. The short
 credits list is [NOTICE.md](../NOTICE.md). Nothing here covers the game itself, which is never in this repository.
 
 This repository ships source only. A build made from it (`tlp.exe`) links the toolchain's runtime pieces below
@@ -21,7 +21,9 @@ statically and loads `SDL3.dll` from its own folder, so anyone who passes a buil
   LGPL-3.0 or later with the GCC Runtime Library Exception 3.1. The GPL-3.0 text it refers to is
   [`gcc/COPYING3.txt`](gcc/COPYING3.txt).
 - [`fonts-lilitaone-OFL.txt`](fonts-lilitaone-OFL.txt), [`fonts-baloo2-OFL.txt`](fonts-baloo2-OFL.txt),
-  [`fonts-mplusrounded1c-OFL.txt`](fonts-mplusrounded1c-OFL.txt): SIL Open Font License 1.1, Lilita One, Baloo 2 and
-  M PLUS Rounded 1c, rendered into the banner images in `docs/assets/`. The font files are not in this repository.
+  [`fonts-caveat-OFL.txt`](fonts-caveat-OFL.txt), [`fonts-mplusrounded1c-OFL.txt`](fonts-mplusrounded1c-OFL.txt): SIL
+  Open Font License 1.1, Lilita One, Baloo 2, Caveat and M PLUS Rounded 1c. They are rendered into the banner images in
+  `docs/assets/`, and the project site ships subsets of them as woff2 files in `site/fonts/` (the subsets are
+  derived files; the full font files are not in this repository).
 
 Versions are the ones the build environment in `flake.nix` pins.

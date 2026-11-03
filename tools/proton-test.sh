@@ -14,6 +14,11 @@
 # Exit status: 0 if the program was still running at screenshot time or exited 0; the log is printed.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The game's system fontset draws no glyph without the player's firmware fonts (KZ3_FONT_DIR, patch 5005): text boxes
+# such as the story room's speech bubble come out empty. Default to the local copy in work/fw-fonts when it exists.
+if [[ -z "${KZ3_FONT_DIR:-}" && -d "$ROOT/work/fw-fonts" ]]; then
+  export KZ3_FONT_DIR="Z:$ROOT/work/fw-fonts"
+fi
 SECONDS_RUN=10 SHOT="" NAME="" PROTON_DIR="$HOME/.local/share/Steam/compatibilitytools.d/Proton-GE Latest"
 NETARG=()
 while [[ $# -gt 0 ]]; do
@@ -83,5 +88,9 @@ RC=$?
 set -e
 if command -v python3 >/dev/null; then
   python3 "$ROOT/tools/runprov.py" finish "$RUN" --root "$ROOT" || true
+fi
+# An empty fontset makes every text box blank while the rest of the frame looks right: say so after the run.
+if grep -aq "fontset: no fonts found" "$RUN/app/app_stdout.txt" 2>/dev/null; then
+  echo "proton-test: WARNING: no fonts in the fontset (KZ3_FONT_DIR unset or empty): all game text in this run is blank" >&2
 fi
 exit $RC
