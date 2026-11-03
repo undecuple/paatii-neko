@@ -93,7 +93,7 @@
           default = dp.mkShell { packages = dbase ++ [ dp.cmake dp.ninja dp.pkg-config ]; shellHook = fixLdflags; };
           win = dwin.mkShell {
             nativeBuildInputs = [ dp.cmake dp.ninja dp.pkg-config dp.shaderc dp.python3 dp.ccache ];
-            # SDL3 headers (cellPad pad input via patch 4010: ABI checked at compile time) and SDL3.dll to stage; SDL3 is the PM standard.
+            # SDL3 headers (cellPad pad input via patch 4010: ABI checked at compile time) and SDL3.dll to stage; SDL3 is the project's pad library.
             buildInputs = [ dwin.sdl3 ];
             shellHook = fixLdflags;
           };
@@ -135,7 +135,7 @@
         win = win.mkShell {
           # ccache: tools/build-tlp.sh uses it when present (work/ccache per checkout; 2026-10-09).
           nativeBuildInputs = [ pkgs.cmake pkgs.ninja pkgs.pkg-config pkgs.shaderc pkgs.bubblewrap pkgs.python3 pkgs.ccache ];
-          # SDL3 headers (cellPad pad input via patch 4010: ABI checked at compile time) and SDL3.dll to stage; SDL3 is the PM standard.
+          # SDL3 headers (cellPad pad input via patch 4010: ABI checked at compile time) and SDL3.dll to stage; SDL3 is the project's pad library.
           buildInputs = [ win.sdl3 ];
           shellHook = fixLdflags;
         };

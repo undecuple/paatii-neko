@@ -5,7 +5,7 @@
 # Blocks: secrets and key patterns, PS3 keys or key/licence files, game-derived files (path, extension, contents),
 # any new binary or archive, submodule moves, new download/install commands, unpinned package installs.
 # Allowed: checkpoint screenshots under docs/checkpoints/ (committed on purpose) and the README shots in
-# docs/screenshots/ (picked by the PM) and the banner/social preview in docs/assets/ (tools/release/repo_art.py).
+# docs/screenshots/ (picked by hand) and the banner/social preview in docs/assets/ (tools/release/repo_art.py).
 # SECURITY_OK=1 git commit ... overrides a block; say why in the message.
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)" || exit 2
