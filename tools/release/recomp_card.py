@@ -64,7 +64,7 @@ def readme_status(text):
     """(badge words, line words), either None when absent."""
     b = re.search(r"img\.shields\.io/badge/status-([A-Za-z0-9%_-]+?)-", text)
     badge = re.sub(r"%20|_", " ", b.group(1)).replace("--", "-").lower() if b else None
-    s = re.search(r"^>\s*\*\*Status:\s*([^.*]+?)\.?\*\*", text, re.M)
+    s = re.search(r"^(?:>\s*)?\*\*Status:\s*([^.*]+?)\.?\*\*", text, re.M)
     return badge, (s.group(1).strip().lower() if s else None)
 
 
@@ -182,7 +182,7 @@ def check(root, sfo=None, use_sfo=True):
         # label badges), and checked against the line when there is one.
         badge, line = readme_status(readme.read_text(encoding="utf-8"))
         if line is None:
-            problems.append("README.md has no '> **Status: ...**' line to compare")
+            problems.append("README.md has no '**Status: ...**' line to compare")
         else:
             if badge is not None and badge != line:
                 problems.append(f"README status badge '{badge}' and status line '{line}' differ")

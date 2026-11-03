@@ -137,3 +137,17 @@ only been run under Proton on Linux.
 Install Nix with flakes enabled and follow [Steps](#steps). Not tested outside NixOS. The Proton runner points
 Vulkan at an NVIDIA file in a NixOS location (`/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json`); adjust
 `VK_ICD_FILENAMES` in `tools/proton-inner.sh` for your distribution.
+
+## Repository layout
+
+```
+.github/              CI, the secrets scan, issue forms, contributing and security pages
+cmake/                the MinGW-w64 cross toolchain file
+docs/                 status, features, known issues, building, how it works and the other pages
+licenses/             full licence texts of the third-party parts (index: licenses/README.md)
+port/patches/         this port's changes to ps3recomp, applied in order to a copy of the submodule
+port/tlp/             the port's own host code: main, system-function replacements, defaults
+third_party/ps3recomp the recompiler and runtime (git submodule, pinned, unmodified)
+tools/                lift, build, sandbox and Proton test scripts; release tools in tools/release/
+work/, build/         made by the scripts on your PC (lifted code, the exe); never in git
+```

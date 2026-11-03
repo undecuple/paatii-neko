@@ -115,6 +115,10 @@ class Card(Tree):
         (self.d / "README.md").write_text(README.split("\n\n", 1)[1])
         self.assertEqual(self.run_check()[0], [])
 
+    def test_readme_status_line_without_quote(self):
+        (self.d / "README.md").write_text(README.replace("> **Status:", "**Status:"))
+        self.assertEqual(self.run_check()[0], [])
+
     def test_readme_needs_status_line(self):
         (self.d / "README.md").write_text(README.replace("> **Status: partly playable.** Text.", "Text."))
         self.has("Status: ...")
