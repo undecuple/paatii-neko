@@ -16,6 +16,7 @@
   "approach": "Static recompilation of the PPU and SPU code to C with ps3recomp, HLE system libraries, Direct3D 12 RSX backend",
   "maintainers": [{"name": "undecuple", "link": "https://github.com/undecuple"}],
   "links": [
+    {"label": "Project site", "url": "https://undecuple.github.io/paatii-neko/"},
     {"label": "Status", "url": "https://github.com/undecuple/paatii-neko/blob/main/docs/STATUS.md"},
     {"label": "Building", "url": "https://github.com/undecuple/paatii-neko#building"}
   ],

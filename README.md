@@ -18,7 +18,7 @@ episode 2 at about 29 frames/s in its room scene (target 30), and the first mini
 minigames and sound are unchecked. Details: [docs/STATUS.md](docs/STATUS.md); what a release must meet to be called
 playable: [docs/RELEASE-CRITERIA.md](docs/RELEASE-CRITERIA.md).
 
-[Getting started](#getting-started) · [Compatibility](#compatibility) · [Building](#building) · [Known issues](#settings-and-known-issues) · [Reporting bugs](#reporting-bugs)
+[Getting started](#getting-started) · [Compatibility](#compatibility) · [Building](#building) · [Known issues](#settings-and-known-issues) · [Reporting bugs](#reporting-bugs) · [Project site](https://undecuple.github.io/paatii-neko/)
 
 <p align="center">
   <a href="docs/SCREENSHOTS.md"><img src="docs/screenshots/story-book.png" width="720"
