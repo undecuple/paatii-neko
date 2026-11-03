@@ -43,7 +43,6 @@ the tree for the old owner name and repository slug; a plain `git grep` finds ev
 |---|---|
 | `.github/workflows/ci.yml` | shell and Python scripts parse, every patch applies to the pinned ps3recomp, a host test that needs no game data |
 | `.github/workflows/secrets.yml` | secret scan |
-| `.github/dependabot.yml` | dependency update pull requests |
 | Issue forms | `.github/ISSUE_TEMPLATE/` |
 
 CI cannot build the exe: the lifted code comes from the player's own copy of the game and is never committed.
