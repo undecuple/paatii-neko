@@ -55,7 +55,7 @@ diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
 +                   * sub-block and the tail -- draws and label releases (the Bink
 +                   * movie fence at 0x000640E0 then waits forever). Wait for the
 +                   * patch like the hardware does, for up to GCM_PARK_WAIT_MS
-+                   * (default 30000 since round 9: movie switches need >1 s; 0 = old), then resync as before. */
++                   * (default 30000 since an earlier test pass: movie switches need >1 s; 0 = old), then resync as before. */
                    if (put != s_fifo_getoff) {
 -                      extern unsigned long long ps3_ms_now(void);
 -                      static u32 park_off, park_put;

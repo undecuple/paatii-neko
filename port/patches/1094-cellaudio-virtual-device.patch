@@ -16,7 +16,7 @@ KZ3_AUDIO_VDEV_PERIOD_US = period. Diagnostic only, off by default; nothing is p
  
  
 +
-+/* KZ3 patch 1094 (spu round 70): KZ3_AUDIO_VDEV=1, a virtual output device for runs without one (Proton tests
++/* KZ3 patch 1094: KZ3_AUDIO_VDEV=1, a virtual output device for runs without one (Proton tests
 + * disable the audio drivers, so audio_backend_room() is -1 and the mix thread paces on QPC, one block per 5.33 ms).
 + * A player's run has a WASAPI device, and Wine's shared-mode stream (winepulse/winealsa) signals the event once per
 + * 10 ms device period and holds a ~22 ms buffer (1056 frames): the mix thread then mixes in bursts of ~2 blocks per

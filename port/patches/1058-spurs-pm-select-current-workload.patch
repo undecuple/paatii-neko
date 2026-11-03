@@ -6,7 +6,7 @@ KZ3 patch 1058 (pass 40, re-data 86): the selectWorkload intercept answers the c
  }
  /* kz3-spurs-budget end */
  
-+/* KZ3 patch 1058 (spu round 40, re-data 86): the selectWorkload answer (spurs_select.h). kz3-pm-select begin */
++/* KZ3 patch 1058 (RE report 86): the selectWorkload answer (spurs_select.h). kz3-pm-select begin */
 +#include "spurs_select.h"
 +/* Set by cellSpurs.c (constructor): 1 = another kicked workload of this instance waits unclaimed (or, every kernel
 + * thread busy, this run is past KZ3_PM_QUANTUM_US). NULL = never switch. */
@@ -34,9 +34,9 @@ KZ3 patch 1058 (pass 40, re-data 86): the selectWorkload intercept answers the c
 +}
 +int kz3_pm_select_old(void)
 +{
-+    /* Off by default (coordinator, spu round 40: about -0.7 fps and one menu park freeze in 6 runs with it on):
++    /* Off by default (an earlier test pass: about -0.7 fps and one menu park freeze in 6 runs with it on):
 +     * KZ3_PM_SELECT=1 turns the current-id answer on; KZ3_PM_SELECT_OLD=1 forces the old answers either way.
-+     * KZ3_PM_SELECT=2 = the bare upstream form (spu round 75, evidence for ps3recomp #213): the answer is always
++     * KZ3_PM_SELECT=2 = the bare upstream form (evidence for ps3recomp #213): the answer is always
 +     * wklCurrentId, no run budget, no kicked-workload / quantum switch (docs/upstream/submission/1058-*.diff). */
 +    if (s_kz3_sel_old < 0) {
 +        const char* on = getenv("KZ3_PM_SELECT"); const char* e = getenv("KZ3_PM_SELECT_OLD");
@@ -131,7 +131,7 @@ KZ3 patch 1058 (pass 40, re-data 86): the selectWorkload intercept answers the c
 +                  ctx->pc = ctx->gpr[0]._u32[0] & SPU_LS_MASK;
 +                  return;
 +              } }
-+            /* KZ3 patch 1058 (re-data 86): the WWS job-manager PM compares this answer with wklCurrentId (LS 0x1DC)
++            /* KZ3 patch 1058 (RE report 86): the WWS job-manager PM compares this answer with wklCurrentId (LS 0x1DC)
 +             * and stops after the job in flight when they differ; the old constant 0 below differed for every
 +             * wid != 0, so each job manager ran one job per kernel run. Answer the current id unless the port's
 +             * kernel wants the SPU elsewhere (spurs_policy.c kz3_pm_select; only with KZ3_PM_SELECT=1); otherwise falls through
@@ -151,14 +151,14 @@ KZ3 patch 1058 (pass 40, re-data 86): the selectWorkload intercept answers the c
      return NULL;
  }
  
-+/* KZ3 patch 1058 (spu round 40): the port kernel's side of the selectWorkload answer (spurs_policy.c
++/* KZ3 patch 1058: the port kernel's side of the selectWorkload answer (spurs_policy.c
 + * kz3_pm_select). A running policy module keeps its SPU (the answer is its own wklCurrentId) unless another
 + * workload of the instance is enabled, state 2, not claimed by a kernel thread, and
 + *  - kicked (ready count or signal): it waits for an SPU, as the real kernel's readyCount > contention rule, or
 + *  - every kernel thread of the instance is in a run and this run is past KZ3_PM_QUANTUM_US (default 8000; 0 =
 + *    none): the round-robin passes would otherwise stall behind long runs.
 + * A free kernel thread is not enough to keep running past a kick: an idle thread sleeps between passes, so a
-+ * kicked workload (wid 10 LibMP3 next to wid 9) waited up to that sleep (round 40 probe spu-40n, first variant). 
++ * kicked workload (wid 10 LibMP3 next to wid 9) waited up to that sleep (an earlier test pass probe spu-40n, first variant). 
 + * ASSUMPTION: the real kernel weighs per-SPU priorities (wklInfo) too; the port's kernel threads are
 + * round-robin with no priorities, so any waiting kicked workload counts. kz3-pm-switch begin */
 +static int s_kz3_quantum_us = -1;
@@ -191,12 +191,12 @@ KZ3 patch 1058 (pass 40, re-data 86): the selectWorkload intercept answers the c
 +/* kz3-pm-switch end */
 +
  static DWORD WINAPI spurs_kernel_thread(LPVOID p);
- /* KZ3 patch 1057 (spu round 39): called by the kernel thread when a workload's policy-module run starts (end 0,
+ /* KZ3 patch 1057: called by the kernel thread when a workload's policy-module run starts (end 0,
   * after the contention byte is set) and ends (end 1, after it is cleared, all lanes joined); NULL = off. The
 --- /dev/null
 +++ b/runtime/spu/spurs_select.h
 @@ -0,0 +1,26 @@
-+/* KZ3 patch 1058 (spu round 40, re-data 86 "why the BrB job manager runs one job per PM run"):
++/* KZ3 patch 1058 (RE report 86 "why the BrB job manager runs one job per PM run"):
 + * the answer of the HLE kernel's selectWorkload intercept (LS 0x9D0, spu_channels.c).
 + *
 + * A policy module asks the kernel "which workload should this SPU run now?" and compares the answer with
@@ -204,7 +204,7 @@ KZ3 patch 1058 (pass 40, re-data 86): the selectWorkload intercept answers the c
 + * jm_gfx, physics, post ...) does it in its rate-limited poll 0x2D40 -> wrapper 0x3678 (`ceq r5, cur` at
 + * 0x36C8): a different id means "another workload was selected": the PM stops prefetching (LS 0x12C0 |= 0xFFF0
 + * at 0x1A20) and exits to the kernel once the job in flight is done. The HLE used to answer 0, which differs
-+ * from every wid != 0, so every such PM ran exactly one job per kernel run (spu round 39 P3).
++ * from every wid != 0, so every such PM ran exactly one job per kernel run (an earlier test pass P3).
 + *
 + * The answer now: the current id (keep running) unless the kernel genuinely wants the SPU elsewhere (the run is
 + * over KZ3_SPURS_RUN_MS, patch 1048, or the port's kernel has another kicked workload waiting unclaimed,

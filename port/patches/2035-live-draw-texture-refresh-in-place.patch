@@ -14,7 +14,7 @@ Upstream candidate (general: any title that rewrites small textures every frame)
  
 +/* KZ3 patch 2035: content changes update the cached resource in place. A refresh (the bound texture's hash
 + * changed) used to decode into a new committed resource, rewrite the SRV and retire the old one; in the KZ3 level
-+ * that is ~240 per frame, nearly all 8x8 fp16 textures rewritten every frame (re-data 72, proposal 2). With
++ * that is ~240 per frame, nearly all 8x8 fp16 textures rewritten every frame (RE report 72, proposal 2). With
 + * g_ld_tex_reuse set by the refresh path, create_texture_mipped copies the new texels into that resource when its
 + * description matches (2D, size, mip count, format): PIXEL_SHADER_RESOURCE -> COPY_DEST, the same upload-ring
 + * copies, back to PIXEL_SHADER_RESOURCE. Draws recorded earlier read the old texels (the barrier orders them before

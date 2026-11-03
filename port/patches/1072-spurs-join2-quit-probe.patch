@@ -21,8 +21,8 @@ port's guest dump hook g_kz3_j2_guest_dump.
      return busy > 0 ? busy : 0;
  }
  
-+/* KZ3 patch 1072 (spu round 57, KZ3_JOIN2_PROBE=1, logs only): the T7 quit stalls in cellSpursJoinTask2 (Havok pool dtor,
-+ * re-notes-data-havok.md s.7). A registry of the live task threads (taskset, id, generation, image, start time, SPU
++/* KZ3 patch 1072 (KZ3_JOIN2_PROBE=1, logs only): the T7 quit stalls in cellSpursJoinTask2 (Havok pool dtor,
++ * the RE notes s.7). A registry of the live task threads (taskset, id, generation, image, start time, SPU
 + * context seen by rdch/rchcnt, per-channel read counts) and a ring of the last task starts/exits, dumped by the
 + * JoinTask2 spin with the taskset's bitsets and exit entry. Separates a live task waiting (cause 1) from a stale
 + * enabled bit (cause 2). Off: one global int test per rdch/rchcnt. */

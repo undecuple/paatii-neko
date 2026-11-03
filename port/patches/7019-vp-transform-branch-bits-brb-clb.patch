@@ -1,0 +1,257 @@
+rsx: vertex programs branch on the transform branch bits (BRB/CLB), baked into the shader and keyed into the pipeline.
+Credit: adapted from sp00nznet/ps3recomp PR #485 by n0madic (MIT), https://github.com/sp00nznet/ps3recomp/pull/485:
+the decompiler change (BRB/CLB test bit [23:27] of NV4097_SET_TRANSFORM_BRANCH_BITS (0x1FF8) against [28], CLB
+pushes its return slot like CAL, the outcome is baked into the HLSL; leader table up to slot 544) and the draw-engine
+keying. Toro's part: the same keying in live draw (ld_xl_in.vp_bbits, set in get_pso, folded into ld_pso_key_tail,
+handed to the decompiler in ld_xlate) and in the D3D12 backend's VS cache, and the host test.
+Why: BRB/CLB were not modelled, so every optional path of a program ran. Toro's UI vertex program (62 instructions)
+skips its texture transform for plain sprites with BRB; running it always applied the c1..c4 transform left by the
+last text element, so menu labels showed 36% of their height and titles 38% of their width.
+A program without BRB/CLB keeps its key and its HLSL. The template prewarm (LD_PSO_TEMPLATE) recomputes keys with the
+bits at 0 and refuses records of BRB/CLB programs, which then compile on first use.
+Tests: tests/test_rsx_vp_brb.c (BRB and CLB, set and clear, taken and not; fails to build on the old decompiler).
+Runs: the Game category screen renders its labels and titles complete; with patch 7020 and the port's
+GCM_FLIPCB_ONTICK=1 default the story room scene renders correctly in both 470 s runs (2026-10-26).
+diff --git a/libs/video/rsx_vp_decompiler.c b/libs/video/rsx_vp_decompiler.c
+--- a/libs/video/rsx_vp_decompiler.c
++++ b/libs/video/rsx_vp_decompiler.c
+@@ -133,11 +133,27 @@
+ }
+ 
+ /* ---- flow control -------------------------------------------------------- */
+-#define RSX_VP_MAX_INSTR 512
++/* The transform program memory holds 544 slots (RSX_DSP_VP_INSTR), not 512:
++ * a branch target or block leader past slot 511 must still open a block. */
++#define RSX_VP_MAX_INSTR 544
+ 
+ static u32 s_vp_branch_base = 0;   /* VP slot the program being decompiled starts at */
+ void rsx_vp_set_branch_base(u32 start_slot) { s_vp_branch_base = start_slot; }
+ 
++static u32 s_vp_branch_bits = 0;   /* SET_TRANSFORM_BRANCH_BITS, tested by BRB/CLB */
++void rsx_vp_set_branch_bits(u32 bits) { s_vp_branch_bits = bits; }
++
++int rsx_vp_uses_branch_bits(const u8* ucode, u32 max_bytes)
++{
++    if (!ucode) return 0;
++    for (u32 off = 0; off + 16 <= max_bytes; off += 16) {
++        const u32 sca_op = (rd_le(ucode + off + 4) >> 27) & 0x1Fu;
++        if (sca_op == 0x11 || sca_op == 0x12) return 1;   /* BRB, CLB */
++        if (rd_le(ucode + off + 12) & 1u) break;          /* D3.end */
++    }
++    return 0;
++}
++
+ /* BRA BRI CAL CLI RET BRB CLB (scalar opcodes). */
+ static int vp_is_flow(u32 sca_op)
+ {
+@@ -542,10 +558,20 @@
+                 snprintf(flow_term, sizeof flow_term,
+                          "        if (%s) { if (_csp > 0) { _csp--; _pc = _cs[_csp]; } else _pc = -1; } else _pc = %d;\n",
+                          c, next);
+-            else {                                         /* BRB/CLB: boolean-register branches */
+-                n_flow_skipped++;
+-                snprintf(flow_term, sizeof flow_term,
+-                         "        _pc = %d; /* TODO: %s not modelled */\n", next, rsx_vp_sca_name(sca_op));
++            else {                                         /* BRB, CLB */
++                /* A boolean branch tests bit D3[23:27] of the transform
++                 * branch bits against D3[28] and ignores the CC condition
++                 * (RPCS3's GetOptionalBranchCond). The bits are baked in:
++                 * the caller keys the program on them. */
++                const u32 bit = (s_vp_branch_bits >> ((d3 >> 23) & 0x1Fu)) & 1u;
++                const int taken = bit == ((d3 >> 28) & 1u);
++                if (!taken)
++                    snprintf(flow_term, sizeof flow_term, "        _pc = %d;\n", next);
++                else if (sca_op == 0x11)
++                    snprintf(flow_term, sizeof flow_term, "        _pc = %u;\n", tgt);
++                else
++                    snprintf(flow_term, sizeof flow_term,
++                             "        _cs[_csp] = %d; _csp = min(_csp + 1, 7); _pc = %u;\n", next, tgt);
+             }
+         }
+         /* ---- scalar ALU (reads SRC2) ---- */
+diff --git a/libs/video/rsx_vp_decompiler.h b/libs/video/rsx_vp_decompiler.h
+--- a/libs/video/rsx_vp_decompiler.h
++++ b/libs/video/rsx_vp_decompiler.h
+@@ -57,6 +57,12 @@
+  * to the ucode pointer handed in. Defaults to 0. */
+ void rsx_vp_set_branch_base(u32 start_slot);
+ 
++/* SET_TRANSFORM_BRANCH_BITS for the next program decompiled. BRB and CLB
++ * branch on one of these bits; the decompiler bakes the outcome in, so a
++ * program that rsx_vp_uses_branch_bits() must be keyed on them too. */
++void rsx_vp_set_branch_bits(u32 bits);
++int rsx_vp_uses_branch_bits(const u8* ucode, u32 max_bytes);
++
+ /* KZ3 patch 2077: 1 when the program (up to its end bit, the same scan the
+  * decompiler makes) holds a flow instruction (BRA BRI CAL CLI RET BRB CLB).
+  * Only such a program's HLSL depends on the branch base. */
+diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -1475,6 +1475,12 @@
+         key = eng_fnv1a(&fixed_tag, sizeof fixed_tag, key);
+     } else {
+         key = eng_fnv1a(vp_uc, vp_instrs * 16u, key);
++        /* patch 7019: BRB/CLB outcomes are baked into the program, so the branch bits are identity only for a
++         * program that tests them. */
++        if (rsx_vp_uses_branch_bits(vp_uc, vp_instrs * 16u)) {
++            const u32 vp_branch_bits = rsx_dsp_reg(&g.rsx, 0x1FF8u);
++            key = eng_fnv1a(&vp_branch_bits, sizeof vp_branch_bits, key);
++        }
+         key = rsx_fp_structural_hash(fp_uc, fp_size, key);
+         if (!key) return 0;
+         const u32 fp_ctrl_key = fp_ctrl & 0x4Eu; /* colour width and fragment depth export */
+@@ -1515,6 +1521,8 @@
+         snprintf(s_vs_hlsl, sizeof s_vs_hlsl, "%s", kEngFixedVS);
+         snprintf(s_ps_hlsl, sizeof s_ps_hlsl, "%s", kEngFixedPS);
+     } else {
++        rsx_vp_set_branch_bits(rsx_vp_uses_branch_bits(vp_uc, vp_instrs * 16u)
++                                   ? rsx_dsp_reg(&g.rsx, 0x1FF8u) : 0u);   /* patch 7019 */
+         vi = rsx_vp_decompile_compact_ex(vp_uc, vp_instrs * 16u, vtex_mask,
+                                          layout->mask, s_vs_hlsl,
+                                          sizeof s_vs_hlsl);
+diff --git a/libs/video/rsx_d3d12_backend.c b/libs/video/rsx_d3d12_backend.c
+--- a/libs/video/rsx_d3d12_backend.c
++++ b/libs/video/rsx_d3d12_backend.c
+@@ -1777,6 +1777,10 @@
+            (unsigned long long)s_d3d.frame_count, dir, ndraws);
+ }
+ 
++/* patch 7019: rsx_vp_decompiler.c, the BRB/CLB branch bits baked into a decompiled program */
++extern void rsx_vp_set_branch_bits(u32 bits);
++extern int rsx_vp_uses_branch_bits(const u8* ucode, u32 max_bytes);
++
+ /* Decompile the captured RSX vertex program to HLSL and build the VP PSO
+  * (decompiled VS + atlas alpha-test PS). One-shot per program. */
+ static void compile_vp(void)
+@@ -1786,6 +1790,7 @@
+     if (!st || st->vp_ucode_bytes < 16 || !s_d3d.vp_root_sig) return;
+ 
+     static char hlsl[64 * 1024];
++    rsx_vp_set_branch_bits(st->transform_branch_bits);   /* patch 7019: BRB/CLB outcomes are baked in */
+     int ni = rsx_vp_decompile(st->vp_ucode, st->vp_ucode_bytes, hlsl, sizeof hlsl);
+     /* Does this VP read vp_c[0..3]? Gates the garbage-projection fallback:
+      * programs keeping their MVP elsewhere (gcm/cube: c[256..259]) must not
+@@ -1958,10 +1963,14 @@
+     const u8* vuc = st->vp_ucode + vstart;
+     u32 vlen = st->vp_ucode_bytes - vstart;
+     u32 hash = vp_hash_ucode(vuc, vlen);
++    /* patch 7019: a VP with BRB/CLB has the branch bits baked in, so they are part of its identity */
++    const int uses_bits = rsx_vp_uses_branch_bits(vuc, vlen);
++    if (uses_bits) { hash ^= st->transform_branch_bits; hash *= 16777619u; if (!hash) hash = 1u; }
+     for (int i = 0; i < s_d3d.vp_vs_n; i++)
+         if (s_d3d.vp_vs[i].hash == hash) return i;
+ 
+     static char hlsl[262144];
++    rsx_vp_set_branch_bits(uses_bits ? st->transform_branch_bits : 0u);
+     int ni = rsx_vp_decompile(vuc, vlen, hlsl, sizeof hlsl);
+     if (ni <= 0) return -1;
+     if (getenv("VP_DUMP")) { static int _d=0; if (_d++ < 4) {
+diff --git a/libs/video/rsx_live_draw.c b/libs/video/rsx_live_draw.c
+--- a/libs/video/rsx_live_draw.c
++++ b/libs/video/rsx_live_draw.c
+@@ -7650,6 +7650,7 @@
+     u64 gamma_mask; u32 argb_mask; const u16* argb_remap; u32 srgb_out;
+     u32 fp_const_count; u32 fp_alpha_ref;
+     int vgpu;                                  /* patch 2076: GPU-fetch vertex shader (packed payload 2) */
++    u32 vp_bbits;                              /* patch 7019: SET_TRANSFORM_BRANCH_BITS, 0 for a VP without BRB/CLB */
+ } ld_xl_in;
+ static CRITICAL_SECTION g_ld_xl_cs;
+ static volatile LONG g_ld_xl_state;
+@@ -7672,6 +7673,7 @@
+     const u64 gamma_mask = in->gamma_mask; const u16* argb_remap = in->argb_remap;
+     ld_xl_lock();
+     rsx_vp_set_branch_base(in->vp_start);
++    rsx_vp_set_branch_bits(in->vp_bbits);   /* patch 7019: BRB/CLB outcomes are baked into the HLSL */
+     const int vi = masked_layout && in->vgpu   /* patch 2076 */
+         ? rsx_vp_decompile_vgpu_ex(
+             vp_uc, vp_instrs * 16, vtex_mask, masked_layout->mask,
+@@ -7761,6 +7763,9 @@
+     key = fnv1a(&vtex_mask, sizeof(vtex_mask), key);
+     /* patch 2077: a branching VP's HLSL depends on the slot it starts at (rsx_vp_set_branch_base in ld_xlate) */
+     key = rsx_vp_key_branch_base(key, xi->vp_uc, xi->vp_instrs * 16u, xi->vp_start);
++    /* patch 7019: a VP with BRB/CLB has the branch bits baked in, so they are part of its identity */
++    if (rsx_vp_uses_branch_bits(xi->vp_uc, xi->vp_instrs * 16u))
++        key = fnv1a(&xi->vp_bbits, sizeof(xi->vp_bbits), key);
+     if (gamma_mask) key = fnv1a(&gamma_mask, sizeof(gamma_mask), key);
+     if (srgb_out) key = fnv1a(&srgb_out, sizeof(srgb_out), key);   /* patch 2055 */
+     { static int s2a = -1;   /* patch 2057: the SRC2 abs switch changes shader text, so it changes the key */
+@@ -9130,6 +9135,7 @@
+     xi.gamma_mask = gamma_mask; xi.argb_mask = argb_mask; xi.argb_remap = argb_remap; xi.srgb_out = srgb_out;
+     xi.fp_const_count = g.fp_constants.count; xi.fp_alpha_ref = g.fp_alpha_ref;
+     xi.vgpu = masked_layout && packed_payload == 2;   /* patch 2076 */
++    xi.vp_bbits = rsx_vp_uses_branch_bits(vp_uc, vp_instrs * 16u) ? rsx_dsp_reg(&g.rsx, 0x1FF8u) : 0u;   /* patch 7019 */
+     u64 kl_pre_rs = 0;
+     key = ld_pso_key_tail(key, &xi, packed_payload, &kl_pre_rs);   /* patch 2071: shared with the prewarm */
+ #if defined(YZ_PERF_PROFILE)
+diff --git a/tests/test_rsx_vp_brb.c b/tests/test_rsx_vp_brb.c
+new file mode 100644
+--- /dev/null
++++ b/tests/test_rsx_vp_brb.c
+@@ -0,0 +1,66 @@
++/* Host test: boolean-register branches in a vertex program (BRB 0x11, CLB 0x12) follow the transform branch bits
++ * the caller sets (rsx_vp_set_branch_bits): bit D3[23:27] is compared with D3[28] and the outcome is baked into the
++ * HLSL. Before the fix the decompiler emitted "not modelled" and always fell through. rsx_vp_uses_branch_bits() tells
++ * the caller to key the program on the bits.
++ *
++ *   gcc -O1 -w -I<ps3recomp>/include -Ilibs/video tests/test_rsx_vp_brb.c libs/video/rsx_vp_decompiler.c -o t && ./t
++ */
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include "ps3emu/ps3types.h"
++#include "rsx_vp_decompiler.h"
++
++static void put(u8* p, u32 d0, u32 d1, u32 d2, u32 d3)
++{
++    u32 w[4] = { d0, d1, d2, d3 };
++    memcpy(p, w, 16);   /* the decompiler reads little-endian words */
++}
++
++/* [0] BRB/CLB idx, cond_true -> slot 2; [1] nothing; [2] nothing, END */
++static void prog(u8* uc, u32 op, u32 idx, u32 cond_true)
++{
++    memset(uc, 0, 48);
++    put(uc + 0, 0, op << 27, 0, (idx << 23) | (cond_true << 28) | (2u << 29));
++    put(uc + 32, 0, 0, 0, 1);
++}
++
++static int check(u32 op, u32 idx, u32 cond_true, u32 bits, int taken)
++{
++    u8 uc[48];
++    prog(uc, op, idx, cond_true);
++    static char out[1 << 18];
++    rsx_vp_set_branch_base(0);
++    rsx_vp_set_branch_bits(bits);
++    if (rsx_vp_decompile_ex(uc, sizeof uc, 0, out, sizeof out) < 0) { printf("FAIL decompile idx=%u\n", idx); return 1; }
++    const char* want = !taken ? "        _pc = 1;\n"
++                     : op == 0x11 ? "        _pc = 2;\n"
++                     : "        _cs[_csp] = 1; _csp = min(_csp + 1, 7); _pc = 2;\n";
++    if (!strstr(out, want)) {
++        printf("FAIL op=0x%X idx=%u cond_true=%u bits=0x%X: missing [%.*s]\n", op, idx, cond_true, bits,
++               (int)strlen(want) - 1, want);
++        return 1;
++    }
++    if (strstr(out, "not modelled")) { printf("FAIL: still 'not modelled'\n"); return 1; }
++    return 0;
++}
++
++int main(void)
++{
++    int bad = 0;
++    bad |= check(0x11, 0, 1, 0x1u, 1);          /* taken when bit 0 is set   */
++    bad |= check(0x11, 0, 1, 0x0u, 0);
++    bad |= check(0x11, 0, 0, 0x0u, 1);          /* taken when bit 0 is clear */
++    bad |= check(0x11, 0, 0, 0x1u, 0);
++    bad |= check(0x11, 7, 1, 0x80u, 1);
++    bad |= check(0x11, 31, 0, 0x7FFFFFFFu, 1);
++    bad |= check(0x12, 4, 1, 0x10u, 1);         /* CLB pushes the return slot like CAL */
++    bad |= check(0x12, 4, 1, 0x0u, 0);
++    u8 uc[48];
++    prog(uc, 0x11, 0, 1);
++    if (!rsx_vp_uses_branch_bits(uc, sizeof uc)) { puts("FAIL: BRB program not reported"); bad = 1; }
++    prog(uc, 0x09, 0, 1);                       /* BRI: no branch bits */
++    if (rsx_vp_uses_branch_bits(uc, sizeof uc)) { puts("FAIL: BRI program reported"); bad = 1; }
++    puts(bad ? "test_rsx_vp_brb: FAIL" : "test_rsx_vp_brb: ok");
++    return bad;
++}

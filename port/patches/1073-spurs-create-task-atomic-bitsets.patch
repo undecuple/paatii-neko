@@ -22,7 +22,7 @@ Host test tools/spu/test_ts_create_race.sh.
 + * read-modify-write (spurs_bitset_set: vm_read32 | mask, vm_write32): a task exit clearing its enabled bit between
 + * the read and the write was undone. KZ3 T7: Havok task 0 exited (exit entry state 2, ready 0) while the PPU created
 + * the next step's tasks 1-4 in the same byte; its enabled bit came back, no thread owned it, every later step used ids
-+ * 1-4, and the pool destructor's cellSpursJoinTask2(ts, 0) waited for it forever (spu round 57, KZ3_JOIN2_PROBE dump).
++ * 1-4, and the pool destructor's cellSpursJoinTask2(ts, 0) waited for it forever (KZ3_JOIN2_PROBE dump).
 + * Real libsre updates the bitsets with a lock-line reservation loop, so a concurrent change is never lost and SPU
 + * reservations on the line are broken. Here: the free-id search and the enabled bit (reserving the id), then the ready
 + * bit after task_info is written, each under the line's stripe lock with raw byte access (vm_write32 would take the

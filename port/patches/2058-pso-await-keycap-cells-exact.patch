@@ -23,7 +23,7 @@ BC1's c0 <= c1 rule). Host test tools/smoke/test_keycaps.sh case 8 (flips).
 - * finished builds at its next PSO lookup: blobs into the memory and disk caches, the key into pso_keys.bin, the PSO
 - * into its entry. Statistics: [pso-async] every 256 frames while builds ran. */
 + * library). Until the PSO is back the key's entry is pending (pso NULL). Rounds 49-56 skipped its draws (as RPCS3's
-+ * asynchronous shader mode); rsx round 57 found that this loses draws for good on targets the game renders once and
++ * asynchronous shader mode); an earlier test pass found that this loses draws for good on targets the game renders once and
 + * keeps (the glyph cache: blank menu lists, missing capitals), so the walker now waits for the build
 + * (ld_apso_await) and no draw is skipped; the miss costs the walker the build time again, as LD_PSO_ASYNC=0. The
 + * walker merges finished builds at its next PSO lookup: blobs into the memory and disk caches, the key into
@@ -38,7 +38,7 @@ BC1's c0 <= c1 rule). Host test tools/smoke/test_keycaps.sh case 8 (flips).
      volatile LONG done_flag, in_flight;
 -    u64 submitted, finished, failed, skipped_draws, compile_us, create_us, latency_us, max_latency_us, merged;
 +    u64 submitted, finished, failed, compile_us, create_us, latency_us, max_latency_us, merged;
-+    u64 awaits, await_us, max_await_us;   /* rsx round 57: walker waits for a pending build (no draw is skipped) */
++    u64 awaits, await_us, max_await_us;   /* an earlier test pass: walker waits for a pending build (no draw is skipped) */
      u32 max_in_flight;
  } g_apso;
  
@@ -49,7 +49,7 @@ BC1's c0 <= c1 rule). Host test tools/smoke/test_keycaps.sh case 8 (flips).
 -        LeaveCriticalSection(&g_apso.cs);
          InterlockedExchange(&g_apso.done_flag, 1);
 +        LeaveCriticalSection(&g_apso.cs);
-+        WakeAllConditionVariable(&g_apso.cv);   /* rsx round 57: a walker may wait for this build (ld_apso_await) */
++        WakeAllConditionVariable(&g_apso.cv);   /* an earlier test pass: a walker may wait for this build (ld_apso_await) */
      }
      return 0;
  }
@@ -57,7 +57,7 @@ BC1's c0 <= c1 rule). Host test tools/smoke/test_keycaps.sh case 8 (flips).
      }
  }
  
-+/* rsx round 57: the walker waits for the pending build of g.psos[idx] and returns its PSO (NULL only when the build
++/* an earlier test pass: the walker waits for the pending build of g.psos[idx] and returns its PSO (NULL only when the build
 + * failed). Draws are never skipped while a build is in flight: a skipped draw is lost for good when its target
 + * keeps its content across frames. KZ3's text is such a target: glyphs are rendered once (stencil-then-cover) into
 + * the glyph cache at 0x3A00000 and sampled from there afterwards, so a glyph whose draws were skipped stayed blank
@@ -99,7 +99,7 @@ BC1's c0 <= c1 rule). Host test tools/smoke/test_keycaps.sh case 8 (flips).
              if (g.psos[i].preloaded) { g.psos[i].preloaded = 0; g_ld_pl_used++; }
 -            if (g.psos[i].pending) g_apso.skipped_draws++;   /* patch 2048: build in flight, draw skipped */
              LDW_ADD(RSX_PERF_W_PSO_FIND_T, gp_t3);
-+            if (g.psos[i].pending) return ld_apso_await(i);   /* rsx round 57: wait, never skip */
++            if (g.psos[i].pending) return ld_apso_await(i);   /* an earlier test pass: wait, never skip */
              return g.psos[i].pso;
          }
      }
@@ -116,7 +116,7 @@ BC1's c0 <= c1 rule). Host test tools/smoke/test_keycaps.sh case 8 (flips).
      g.psos[g.n_psos].pso = pso;
      g.psos[g.n_psos].pending = (u8)apso_pending;   /* patch 2048 */
      g.n_psos++;
-+    if (apso_pending) return ld_apso_await(g.n_psos - 1u);   /* rsx round 57: the draw waits for its build */
++    if (apso_pending) return ld_apso_await(g.n_psos - 1u);   /* an earlier test pass: the draw waits for its build */
      return pso;
  }
  
@@ -130,7 +130,7 @@ BC1's c0 <= c1 rule). Host test tools/smoke/test_keycaps.sh case 8 (flips).
 -        if (c0 > c1) { p[2][k] = (2 * p[0][k] + p[1][k]) / 3; p[3][k] = (p[0][k] + 2 * p[1][k]) / 3; }
 -        else { p[2][k] = (p[0][k] + p[1][k]) / 2; p[3][k] = 0; }
 -    }
-+    (void)c0; (void)c1;   /* rsx round 57: BC2/BC3 colour blocks are always four-colour (no c0 <= c1 mode as BC1) */
++    (void)c0; (void)c1;   /* an earlier test pass: BC2/BC3 colour blocks are always four-colour (no c0 <= c1 mode as BC1) */
 +    for (int k = 0; k < 3; k++) { p[2][k] = (2 * p[0][k] + p[1][k]) / 3; p[3][k] = (p[0][k] + 2 * p[1][k]) / 3; }
      uint32_t cb = (uint32_t)b[12] | ((uint32_t)b[13] << 8) | ((uint32_t)b[14] << 16) | ((uint32_t)b[15] << 24);
      for (int i = 0; i < 16; i++) {
@@ -142,7 +142,7 @@ BC1's c0 <= c1 rule). Host test tools/smoke/test_keycaps.sh case 8 (flips).
 - * visible texel (4-colour mode). Good enough for grey keycaps; the game's own neighbours in a shared block lose a
 - * little precision (they were DXT5 already). */
 + * visible texel (4-colour mode). Good enough for grey keycaps. Only for blocks whose 16 texels are all inside prompt
-+ * cells (rsx round 57; blocks shared with other art go through kc_bc3_encode_keep). */
++ * cells (blocks shared with other art go through kc_bc3_encode_keep). */
  static void kc_bc3_encode(uint8_t px[16][4], uint8_t* b)
  {
      int amin = 255, amax = 0;
@@ -150,7 +150,7 @@ BC1's c0 <= c1 rule). Host test tools/smoke/test_keycaps.sh case 8 (flips).
      b[12] = (uint8_t)cb; b[13] = (uint8_t)(cb >> 8); b[14] = (uint8_t)(cb >> 16); b[15] = (uint8_t)(cb >> 24);
  }
  
-+/* rsx round 57: a block that also holds texels outside every prompt cell. The block keeps its endpoints (colour and
++/* an earlier test pass: a block that also holds texels outside every prompt cell. The block keeps its endpoints (colour and
 + * alpha) and those texels' indices, so they decode exactly as before; only the texels inside a cell get new
 + * indices, the nearest of the block's own palette. in[i] = 1 for a texel inside a cell. */
 +static void kc_bc3_encode_keep(const uint8_t px[16][4], const uint8_t in[16], uint8_t* b)
@@ -187,7 +187,7 @@ BC1's c0 <= c1 rule). Host test tools/smoke/test_keycaps.sh case 8 (flips).
      if (kind == KC_NONE || rsx_keycaps_sig() < 2) return NULL;
      const kc_cell* cells = kind == KC_HUD ? kc_hud_cells : kc_menu_cells;
      const unsigned nc = kind == KC_HUD ? sizeof kc_hud_cells / sizeof kc_hud_cells[0] : sizeof kc_menu_cells / sizeof kc_menu_cells[0];
-+    /* rsx round 57: the caps are drawn into a full-size overlay first (in = which texels belong to a drawn cell), then
++    /* an earlier test pass: the caps are drawn into a full-size overlay first (in = which texels belong to a drawn cell), then
 +     * each touched block is re-encoded once: freely when all 16 texels are in cells, else with
 +     * kc_bc3_encode_keep so the texels outside every cell keep their exact values. The guest bytes are never
 +     * written; the pad pictures come back by uploading them unchanged (sig 1). */
@@ -259,7 +259,7 @@ BC1's c0 <= c1 rule). Host test tools/smoke/test_keycaps.sh case 8 (flips).
 - * 1. Pending entries. A PSO cache entry whose build is in flight has pso == NULL and pending = 1: a lookup returns
 - *    NULL, so the draw is skipped. When the build is back, RSX_APSO_MERGE finds the key's pending entry and stores
 + * 1. Pending entries. A PSO cache entry whose build is in flight has pso == NULL and pending = 1: a lookup waits for
-+ *    the build (rsx round 57, ld_apso_await; rounds 49-56 skipped the draw). When the build is back, RSX_APSO_MERGE finds the key's pending entry and stores
++ *    the build (ld_apso_await; rounds 49-56 skipped the draw). When the build is back, RSX_APSO_MERGE finds the key's pending entry and stores
   *    the PSO (or NULL for a failed build) and clears pending; with no pending entry for the key the caller releases
   *    the PSO.
   * 2. In-flight shader compiles (dedupe). Several jobs often need the same VS or PS blob before any of them is back.

@@ -7,7 +7,7 @@ index d8f4081..39d844f 100644
  
  #ifdef _WIN32
 -static DWORD WINAPI timer_thread_proc(LPVOID param)
-+/* KZ3 patch 1054 (spu round 37; re-notes-data-audio.md 4.3): absolute-deadline periodic timer.
++/* KZ3 patch 1054 (the RE notes 4.3): absolute-deadline periodic timer.
 + *
 + * The old loop waited WaitForSingleObject(stop, period_usec / 1000) after each send: the period was truncated to
 + * whole ms (5333 us -> 5 ms), measured from the end of the previous send, so wake latency added to every period and
@@ -307,7 +307,7 @@ index c2a0d05..c8c867b 100644
                  s_kz3_fill_max;
  static int s_kz3_hole_blk[CELL_AUDIO_PORT_MAX] = {-1, -1, -1, -1, -1, -1, -1, -1};
  static long long s_kz3_late_ms;
-+/* KZ3 patch 1054 (spu round 37): QPC of the last producer write per ring slot of port 0 (the brbDriver ring), filled
++/* KZ3 patch 1054: QPC of the last producer write per ring slot of port 0 (the brbDriver ring), filled
 + * by the port's KZ3_AUDIO_TICK=1 probe (port/spu/kz3_audio_probe.c, 0 = unknown). At a hole the mixer logs the slot's
 + * age: < one ring (8 blocks = 42.7 ms) = written after the previous read but silent, otherwise the producer had not
 + * written it since its previous read (late by the age minus one ring). */

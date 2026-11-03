@@ -91,7 +91,7 @@ Needs a relift. Upstream candidate (with 1096).
 +_Static_assert(SPU_TASKSET_TASK_LO == SPU_IBG_TASKSET_TASK_LO && SPU_TASK_POL_BITS == 1024u &&
 +               SPU_JOB_RETURN_LS == SPU_IBG_JOB_RETURN_LS, "KZ3 patch 1098: spu_ib_guess_ok's copies");
  
- /* KZ3 patch 1043 (spu round 30): skip a streamed overlay module at its entry (A/B aid for KZ3's SPU
+ /* KZ3 patch 1043: skip a streamed overlay module at its entry (A/B aid for KZ3's SPU
   * visibility culling jobs, KZ3_SPU_SKIP_OVL / KZ3_CULL_AB in the port's generated registration). When the
 @@ -1943,8 +1970,10 @@
   * Tested on both dispatch paths (spu_dispatch_mt.c fast path and the resolver below); one global load on the
@@ -102,7 +102,7 @@ Needs a relift. Upstream candidate (with 1096).
 -static uint8_t s_ovl_skip[KZ3_OVL_SKIP_MAX];   /* 0 off, 1 return at entry, 2 ask the entry hook (patch 1044) */
 +uint8_t g_spu_ovl_skip[KZ3_OVL_SKIP_MAX];   /* KZ3 patch 1098: not static (spu_ib_guess_ok) */
 +#define s_ovl_skip g_spu_ovl_skip   /* 0 off, 1 return at entry, 2 ask the entry hook (patch 1044) */
- /* KZ3 patch 1044 (spu round 31): an entry hook in place of the plain skip. It runs at the same point (the job
+ /* KZ3 patch 1044: an entry hook in place of the plain skip. It runs at the same point (the job
   * manager's call of the module entry; ctx->gpr[3] = the job context, LS[ctx+0x20] = the job's parameters) and
   * may edit the local store before the module runs; it returns 1 to skip the module after all, 0 to let it run
 @@ -2575,10 +2604,11 @@
@@ -136,10 +136,10 @@ Needs a relift. Upstream candidate (with 1096).
          g_spu_trampoline_fn = spu_indirect_branch;                                               \
          return;                                                                                  \
      } while (0)
-+/* KZ3 patch 1098 (spu round 73): lift-time guesses for computed hops. A software-pipelined SPU loop closes with
++/* KZ3 patch 1098: lift-time guesses for computed hops. A software-pipelined SPU loop closes with
 + * `bi rX` where rX = selb(head, exit, cond) and head was loaded by `ila` (the audio mixer jobs' loops: 0xD100 ->
 + * 0xD2DC -> 0xD100 ...); every iteration went through spu_ib_direct (an out-of-line call, the memo hash and load,
-+ * the registry load and an indirect jump: 9.9 % of the audio SPU thread in spu round 72). The lifter now finds
++ * the registry load and an indirect jump: 9.9 % of the audio SPU thread in an earlier test pass). The lifter now finds
 + * such constants (tools/spu_lifter.py compute_ib_guesses) and emits SPU_IB_HOP_G(ctx, T, SPU_IB_GUESS(ctx, G, F)...):
 + * when the target equals G and spu_ib_guess_ok() holds, it is a direct tail call of F, the lifted function at G of
 + * the same image. spu_ib_guess_ok() is spu_ib_direct's tests for that constant, each the same or stricter (a

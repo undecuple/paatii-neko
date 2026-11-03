@@ -48,7 +48,7 @@ evict=N recycle=N entries=N. Host test tools/smoke/test_tex_lru.sh.
      }
  }
 
-+/* KZ3 patch 2075: texture cache recycling (rsx round 70, re-notes-rsx "Round 70"). KZ3's SPU jobs write per-object
++/* KZ3 patch 2075: texture cache recycling (the RE notes). KZ3's SPU jobs write per-object
 + * 8x8 W16Z16Y16X16_FLOAT blocks into a ring in main memory (1:0x0005C180-0x00C8F700 on K4, ~25,000 block slots),
 + * so every frame binds a few hundred blocks at offsets the cache does not hold: on K4 95 % of the new cache entries
 + * (118,698 of 125,184 in 49 s). Once the 8,192 entries are full every such miss paid a linear scan of all entries for

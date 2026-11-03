@@ -28,7 +28,7 @@ diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
 +/* The SDK's cellSpursAttributeInitialize() macro imports this internal name
 + * (NID 0x95180230). KZ3 patch 1062: its signature is (attr, revision, sdkVersion,
 + * nSpus, spuPriority, ppuPriority, exitIfNoWork), not the public five-argument one
-+ * (kz3_spurs_attr.h; default on since spu round 60, KZ3_SPURS_ATTR_SDK=0 = the old 2/2 mapping). */
++ * (kz3_spurs_attr.h; default on since an earlier test pass, KZ3_SPURS_ATTR_SDK=0 = the old 2/2 mapping). */
 +s32 _cellSpursAttributeInitialize(CellSpursAttribute* attr, uint64_t r4, uint64_t r5,
 +                                  uint64_t r6, uint64_t r7, uint64_t r8, uint64_t r9)
  {
@@ -50,14 +50,14 @@ new file mode 100644
 --- /dev/null
 +++ b/libs/spurs/kz3_spurs_attr.h
 @@ -0,0 +1,45 @@
-+/* KZ3 patch 1062 (spu round 47, from re-data round 104): the SDK's internal
++/* KZ3 patch 1062 (from an earlier test pass): the SDK's internal
 + * _cellSpursAttributeInitialize (NID 0x95180230, what the cellSpursAttributeInitialize()
 + * macro imports) takes (attr, revision, sdkVersion, nSpus, spuPriority, ppuPriority,
 + * exitIfNoWork). The HLE used the public five-argument prototype, so it read r4 (the
 + * revision, 2) as nSpus, r5 (the SDK version) as spuPriority and r6 (the real nSpus) as
 + * ppuPriority. KZ3 asks for 5 SPUs (HiPrio) and 1 (LoPrio); the HLE made both 2.
 + * The register-to-argument mapping lives here so a host test can check it without the
-+ * Windows-only cellSpurs.c. ON by default since spu round 60 (with the per-SPU kernel 1074 and the PM
++ * Windows-only cellSpurs.c. ON by default since an earlier test pass (with the per-SPU kernel 1074 and the PM
 + * argument fix 1077 the real 5/1 counts reach K4; before, the boot hung: spu rounds 47, 58-59);
 + * KZ3_SPURS_ATTR_SDK=0 selects the old mapping (r4 read as nSpus, 2/2). */
 +#ifndef KZ3_SPURS_ATTR_H

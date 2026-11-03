@@ -208,7 +208,7 @@ Upstream candidate (general alias fix).
 +    return (int)(SRV_SURF_WIN_BASE + si * LD_SWIN_PER + k);
 +}
 +
- /* Patch 2024 (D46 spike, diagnostic): LD_GEOM_CAPTURE=1 with LD_SURF_DUMP
+ /* Patch 2024 (spike, diagnostic): LD_GEOM_CAPTURE=1 with LD_SURF_DUMP
   * captures, in the frame after the dump fires, the guest clip-space position
   * (o[0], before the host's posscale/offset) and the host clip position (Out.pos,
 @@ -12974,6 +13113,10 @@

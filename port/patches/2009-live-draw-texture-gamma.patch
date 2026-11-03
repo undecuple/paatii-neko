@@ -111,7 +111,7 @@ SET_SHADER_PACKER (0x1FBC, ASSUMPTION: the sRGB-output register) / SET_SURFACE_F
 + * (unit, format, gamma) combination of an enabled fragment texture whose
 + * TEXTURE_ADDRESS gamma bits [23:20] are set, and every new value of
 + * SET_SHADER_PACKER (0x1FBC, sRGB output) and SET_SURFACE_FORMAT (0x208).
-+ * Live-draw ignores both (D21 probe: the menu is brighter/yellower than RPCS3). */
++ * Live-draw ignores both (probe: the menu is brighter/yellower than RPCS3). */
 +static void ld_gamma_log(u32 unit, const rsx_dsp_texture* t)
 +{
 +    static int on = -1;

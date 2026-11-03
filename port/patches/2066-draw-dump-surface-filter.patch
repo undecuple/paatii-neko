@@ -14,7 +14,7 @@ Without LD_DRAW_DUMP_SURF nothing changes. Log: [draw-dump] surface filter <offs
       * gated frame, read back each k-th draw's target BEFORE it is recorded,
       * named by frame-relative index -- bisects which draw changes a surface. */
      { static const char* dir = (const char*)-1; static u32 every, frame = ~0u, idx, dumped_frame = ~0u;
-+      /* Patch 2066 (KZ3 rsx round 64): LD_DRAW_DUMP_SURF=<hex colour offset> limits the draw dump and the
++      /* Patch 2066 (KZ3): LD_DRAW_DUMP_SURF=<hex colour offset> limits the draw dump and the
 +       * LD_DRAW_INPUTS selection to the draws into that surface and counts them on their own (sidx: the n-th
 +       * draw into the surface in this frame, so a pass is selected the same way whatever the shadow passes before
 +       * it drew); the dumps start at the first frame that began inside the gate (no partial frame), and
@@ -39,7 +39,7 @@ Without LD_DRAW_DUMP_SURF nothing changes. Log: [draw-dump] surface filter <offs
 +          snprintf(path, sizeof(path), "%s\\draw_f%06u_i%04u_%08X.ppm", dir, frame, sel, surf);
            ld_dump_surface_ppm(path, &g.surfaces[target]);
        }
-       /* Patch 2043 (KZ3 rsx round 43): LD_DRAW_INPUTS=<frame>:<idx> (idx = the frame-relative draw index
+       /* Patch 2043 (KZ3): LD_DRAW_INPUTS=<frame>:<idx> (idx = the frame-relative draw index
 @@ -10181,20 +10192,23 @@
         * as hex, per enabled unit the decoded state and raw words 0x1A00+u*0x20 / 0x1840+u*4, the fragment
         * program as hex, the collected constants), inputs_..._fp.bin (ucode) and inputs_..._u<unit>.bin (the

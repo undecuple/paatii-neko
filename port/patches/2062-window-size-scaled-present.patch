@@ -79,7 +79,7 @@ diff -ruN a/libs/video/rsx_window_size.h b/libs/video/rsx_window_size.h
 +++ b/libs/video/rsx_window_size.h	2026-10-15 02:25:43.424954846 -0500
 @@ -0,0 +1,161 @@
 +/*
-+ * KZ3 patch 2062 (rsx round 62): the game window's size, apart from the guest's 1280x720 output.
++ * KZ3 patch 2062: the game window's size, apart from the guest's 1280x720 output.
 + *
 + * The swap chain stays at the guest size; its DXGI_SCALING_STRETCH (the default) scales it to the window's client
 + * area at present. This header keeps that client area at the guest's aspect ratio, so the scaling never distorts:

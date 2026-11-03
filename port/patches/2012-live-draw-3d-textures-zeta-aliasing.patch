@@ -74,7 +74,7 @@ diff --git a/libs/video/rsx_fp_decompiler.c b/libs/video/rsx_fp_decompiler.c
  
 +/*
 + * Patch 2011: textures that read a zeta buffer (Killzone 3's first level,
-+ * round 11 RPCS3 capture). live-draw binds its R32_FLOAT depth snapshot for
++ * an earlier RPCS3 capture). live-draw binds its R32_FLOAT depth snapshot for
 + * them; these post-passes turn the generic Sample call into what the RSX
 + * texture unit returns for that format.
 + *
@@ -330,7 +330,7 @@ diff --git a/libs/video/rsx_live_draw.c b/libs/video/rsx_live_draw.c
  }
 +/* Patch 2011: swizzled 3D textures interleave x, y and z bits in that order
 + * while each axis still has bits left (the 2D order extended by one axis).
-+ * ASSUMPTION: from the 2D layout; KZ3's one 3D texture (round 11 capture) is
++ * ASSUMPTION: from the 2D layout; KZ3's one 3D texture (an earlier capture) is
 + * linear, so this path is untested against real data. */
 +static u32 morton_index3(u32 x, u32 y, u32 z, u32 lw, u32 lh, u32 ld)
 +{
@@ -408,7 +408,7 @@ diff --git a/libs/video/rsx_live_draw.c b/libs/video/rsx_live_draw.c
 +}
 +
 +/* Patch 2011: TEXTURE_FORMAT dimension 3. KZ3's first level binds one
-+ * A8R8G8B8 linear 3D texture in the final 1280x720 composite (round 11
++ * A8R8G8B8 linear 3D texture in the final 1280x720 composite (an earlier test pass
 + * capture, draw 576 unit 3; ASSUMPTION: colour-grading LUT). Before this it
 + * decoded to nothing and the unit read SRV_WHITE. Uncompressed formats only,
 + * base level only; slices are `pitch * height` apart (linear) or 3D-swizzled. */
@@ -486,7 +486,7 @@ diff --git a/libs/video/rsx_live_draw.c b/libs/video/rsx_live_draw.c
  }
  
 +/* Patch 2011: texture units that read a zeta buffer live-draw renders on the
-+ * host. Killzone 3's first level (round 11 RPCS3 capture) binds DEPTH16 at
++ * host. Killzone 3's first level (an earlier RPCS3 capture) binds DEPTH16 at
 + * its Z16 shadow-map zetas with zfunc GEQUAL (shadow compare, 138 binds), X16
 + * at Z16 zetas (depth read as a value, 110) and A8R8G8B8 at the Z24S8 zeta
 + * (depth bytes, 126). Guest VRAM under a host-rendered zeta is never written,

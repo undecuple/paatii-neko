@@ -17,7 +17,7 @@ Upstream candidate (with 1082/1100).
      uint8_t* const spu__ls = ctx->ls;                                                                  \
      const int spu__lsdbg = spu_ls_dbg_armed();                                                         \
      (void)spu__ls; (void)spu__lsdbg;
-+/* KZ3 patch 1107 (spu round 79): the gated accessors out of line. spu_ls_read128/write128 are always_inline (1035),
++/* KZ3 patch 1107: the gated accessors out of line. spu_ls_read128/write128 are always_inline (1035),
 + * so every LS access of a lifted function carried its own inlined copy of the full accessor on the cold side of the
 + * 1100 gate, and GCC kept the masked address twice (one for each side): 2 instructions per load more on the hot path
 + * (job 255's 0x5868 loop: `mov`, `and` per load) and a large cold tail. The cold side is now one call to these

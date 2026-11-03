@@ -41,7 +41,7 @@ vm_base stores v0.15.0 added (stdbrx, stvlx/stvrx) note too.
  }
 +/* KZ3 patch 2082: recompiled PPU stores into the RSX local window. The PPU runtime (ppu_loader.cpp) tests one
 + * byte per 64 KB guest page on every store (vm_write8..64 and the lifted inline stores) and calls this hook for
-+ * the pages that carry its NOTE bit, which is set here on the local window once its address is known. Round 75's
++ * the pages that carry its NOTE bit, which is set here on the local window once its address is known. An earlier test pass's
 + * LD_TEX_WATCH run named the writer of the location-0 texture misses: vm_write64 on a PPU thread (the 0x0FFxxxxx
 + * mip spans). Weak references: host tests link without the PPU runtime. LD_PPU_STORE_NOTE=0 leaves the bits clear
 + * (the old behaviour: PPU stores into local memory note nothing). */

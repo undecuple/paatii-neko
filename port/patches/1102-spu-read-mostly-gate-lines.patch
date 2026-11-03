@@ -89,7 +89,7 @@ Upstream candidate (layout of hot read-mostly globals vs. hot counters in the SP
 +int g_spu_ovl_skip_any SPU_READ_MOSTLY = 0;
 +uint8_t g_spu_ovl_skip[KZ3_OVL_SKIP_MAX] SPU_READ_MOSTLY;   /* KZ3 patch 1098: not static (spu_ib_guess_ok) */
  #define s_ovl_skip g_spu_ovl_skip   /* 0 off, 1 return at entry, 2 ask the entry hook (patch 1044) */
- /* KZ3 patch 1044 (spu round 31): an entry hook in place of the plain skip. It runs at the same point (the job
+ /* KZ3 patch 1044: an entry hook in place of the plain skip. It runs at the same point (the job
   * manager's call of the module entry; ctx->gpr[3] = the job context, LS[ctx+0x20] = the job's parameters) and
 @@ -2560,7 +2567,7 @@
  
@@ -110,7 +110,7 @@ Upstream candidate (layout of hot read-mostly globals vs. hot counters in the SP
 -SPU_GATE int g_spu_smc_watch  = -1;  /* spu_ls_write_probe_smc (SPU_SMC_WATCH)  */
 -SPU_GATE int g_wws_code_probe = 0;   /* WWS code-buffer resolution, capped      */
 -SPU_GATE int g_wws_read_probe = 0;
-+/* KZ3 patch 1102 (spu round 74): read-mostly gates in cache lines of their own (PE builds).
++/* KZ3 patch 1102: read-mostly gates in cache lines of their own (PE builds).
 + * Every direct hop, computed-hop guess and lifted function entry reads ~20 runtime flags (spu_hop_ok,
 + * spu_ib_guess_ok, spu_ls_dbg_armed, the drain and fa/fs/fm fast-path switches). They are written once at start or
 + * by opt-in diagnostics, but the linker had placed them next to counters other SPU threads write all the time
@@ -141,7 +141,7 @@ Upstream candidate (layout of hot read-mostly globals vs. hot counters in the SP
 -int g_kz3_spu_slowcg = 0;
 +int g_kz3_spu_slowcg SPU_READ_MOSTLY = 0;
  
- /* KZ3 patch 1095 (spu round 70): SPU denormal rule on SPU host threads; see spu_fpmode.h. Opt-in: KZ3_SPU_FTZ=1. */
+ /* KZ3 patch 1095: SPU denormal rule on SPU host threads; see spu_fpmode.h. Opt-in: KZ3_SPU_FTZ=1. */
  #include "spu_fpmode.h"
 -int g_kz3_spu_ftz = -1;
 +int g_kz3_spu_ftz SPU_READ_MOSTLY = -1;

@@ -15,13 +15,13 @@ candidate (with 1066).
   * taskset's waiting tasks are never resumed) and its exit, if any, leaves the new tasks' state alone.
 - * KZ3_JOIN_TASKSET_OLD=1 = the old behaviour; KZ3_JOIN_TASKSET_MS = the wait bound (default 1000). */
 + * KZ3_JOIN_TASKSET_OLD=1 = the old behaviour.
-+ * KZ3 patch 1093 (spu round 69): the wait has no bound any more (it was 1000 ms, KZ3_JOIN_TASKSET_MS): Join returns
++ * KZ3 patch 1093: the wait has no bound any more (it was 1000 ms, KZ3_JOIN_TASKSET_MS): Join returns
 + * when the taskset's running tasks have exited or parked, as libsre's cellSpursJoinTaskset waits for the workload's
 + * shutdown. The bound never fired in the K4/T7 runs of rounds 62-69 (0 of ~800 joins; the longest wait 4 ms). A
 + * join still waiting logs "[ts-join] ... still waiting" with the running task ids once per second. */
  static _Thread_local uint32_t t_task_ts, t_task_gen;
  /* KZ3 patch 1067 (opt-in, KZ3_JOIN_CUTOFF_EXIT=1): a cut-off parked task leaves WAIT_SIGNAL and ends its host thread
-  * instead of staying parked forever (1066: one leaked parked thread per cut-off, about 1 join in 70 in round 49-50
+  * instead of staying parked forever (1066: one leaked parked thread per cut-off, about 1 join in 70 in an earlier test pass-50
 @@ -433,8 +437,6 @@
  int spu_taskset_join_wait(uint32_t taskset_ea)
  {
@@ -61,7 +61,7 @@ candidate (with 1066).
 +    return 0;
  }
  
- /* KZ3 patch 1072 (spu round 57, KZ3_JOIN2_PROBE=1, logs only): the T7 quit stalls in cellSpursJoinTask2 (Havok pool dtor,
+ /* KZ3 patch 1072 (KZ3_JOIN2_PROBE=1, logs only): the T7 quit stalls in cellSpursJoinTask2 (Havok pool dtor,
 --- a/libs/spurs/cellSpurs.c
 +++ b/libs/spurs/cellSpurs.c
 @@ -1343,7 +1343,7 @@

@@ -36,7 +36,7 @@ index 92c488c..5235d89 100644
  
 +/* Patch 2018: batched write-backs. ld_writeback_surface above costs one
 + * readback buffer allocation and one full GPU wait per surface; Killzone 3
-+ * writes four main-memory surfaces back at one release per frame (round 19).
++ * writes four main-memory surfaces back at one release per frame.
 + * The batch records every surface's copy into a persistent readback buffer,
 + * submits once, waits once, then converts all of them into guest memory.
 + * LD_WRITEBACK_BATCH=0 selects the per-surface path (A/B). */

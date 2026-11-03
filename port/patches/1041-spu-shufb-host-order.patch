@@ -4,14 +4,14 @@
  /* pshufb version: one of the hottest SPU ops (~11% of GH3's FMOD mixer task
   * as the byte loop). SPU byte P lives at host byte SPU_W(P), i.e. the bytes
   * of each 32-bit word reversed, so swap into SPU order, select, swap back. */
-+/* KZ3 patch 1041 (spu round 28): shufb in host byte order, without the three word swaps. Result host byte h is
++/* KZ3 patch 1041: shufb in host byte order, without the three word swaps. Result host byte h is
 + * SPU byte h ^ 3, so its control is host byte h of c as it stands; SPU source byte k (k = control & 0x1F) is
 + * host byte (k & 15) ^ 3 of a (k < 16) or b. t = (control & 0x1F) ^ 3 keeps bit 4 (the a/b choice):
 + * pshufb(a, t + 0x70) zeroes the b bytes (bit 7 set), pshufb(b, t - 0x10) zeroes the a bytes. Controls with
 + * bit 7 set (10x -> 0x00, 110 -> 0xFF, 111 -> 0x80) come from a 16-entry table on the high nibble, selected by
 + * the control's own sign bit. 11 vector ops instead of ~20. Bit-identical to the reference (host test
 + * tools/spu/test_spu_fastcg.sh), so no runtime switch (a flag load per op cost more than it was worth in the
-+ * round-28 bench); spu_shufb_1035 keeps the previous version for the test's timing comparison. */
++ * earlier bench); spu_shufb_1035 keeps the previous version for the test's timing comparison. */
  SPU_HOT u128 spu_shufb(u128 a, u128 b, u128 c) {   /* patch 1035: forced inline */
 +    {
 +        __m128i A, B, C; memcpy(&A, &a, 16); memcpy(&B, &b, 16); memcpy(&C, &c, 16);

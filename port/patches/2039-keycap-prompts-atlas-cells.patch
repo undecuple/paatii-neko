@@ -46,9 +46,9 @@ fingerprint of every candidate upload. Log: [keycap]. Host test: tools/smoke/tes
 --- /dev/null
 +++ b/libs/video/rsx_keycaps.h	2026-10-12 11:25:57.969485039 -0500
 @@ -0,0 +1,434 @@
-+/* KZ3 patch 2039 (rsx round 39, D51 hooks D/E): keycap prompts.
++/* KZ3 patch 2039 (hooks D/E): keycap prompts.
 + *
-+ * Killzone 3 draws its button prompts as cells of two DXT5 atlases (re-notes-disc.md "Button icon atlases"):
++ * Killzone 3 draws its button prompts as cells of two DXT5 atlases (the RE notes "Button icon atlases"):
 + * the HUD atlas (1024x512, ButtonIconCollection #416 of defaultsp_default_assets, used by the in-level
 + * `[ICON group=gamefunction id=X]` hints through 0x808D00 -> 0x808C4C) and the menu atlas (512x128, ImageMap #104
 + * of menu.basemenu_styles, used by `<icon name=X>` in menu legends through 0x12BF90). When the player's last
@@ -63,7 +63,7 @@ fingerprint of every candidate upload. Log: [keycap]. Host test: tools/smoke/tes
 + * fingerprint of every 1024x512 / 512x128 DXT5 upload (to identify the atlases in another game version).
 + *
 + * The atlases are recognised by an FNV-1a 64 hash over their little-endian u32 words, computed from the decoded
-+ * game data (round 39: HUD = Texture #314 of menu.basemenu_styles / #195 of application_assets, menu = #308 of
++ * game data (an earlier test pass: HUD = Texture #314 of menu.basemenu_styles / #195 of application_assets, menu = #308 of
 + * menu.basemenu_styles, the 1.00 disc). Cell rectangles are the game's own (ButtonIcon.TextureRect, ImageRects).
 + */
 +#ifndef RSX_KEYCAPS_H

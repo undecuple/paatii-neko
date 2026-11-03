@@ -6,7 +6,7 @@ KZ3 patch 1051 (pass 35): g_kz3_putllc_hook(ea) after every committed PUTLLC, fo
   * stream is, so the only evidence is the DMA that writes it. NULL until
   * installed, so a title with no SPU-built FIFO pays nothing. */
  void (*g_spu_put_hook)(uint32_t ea, uint32_t size) = 0;
-+/* KZ3 patch 1051 (spu round 35): called after every committed PUTLLC with the line EA (the DMA put hook above
++/* KZ3 patch 1051: called after every committed PUTLLC with the line EA (the DMA put hook above
 + * never sees atomics); the culling probe (port/spu/kz3_cull_probe.c) watches the frame's sync word with it. */
 +void (*g_kz3_putllc_hook)(uint32_t ea) = 0;
  

@@ -6,7 +6,7 @@ KZ3 patch 1045 (pass 34, upstream candidate): cellSpursReadyCountSwap and Compar
  
      vm_write32((u32)(uintptr_t)old, s_workloads[wid].readyCount);
      s_workloads[wid].readyCount = value;
-+    /* KZ3 patch 1045 (spu round 34, re-data 70 section 3a): the kernel poll reads the instance byte
++    /* KZ3 patch 1045 (RE report 70 section 3a): the kernel poll reads the instance byte
 +     * (SPURS_WKL_READY1 + wid), which ReadyCountStore writes; Swap and CompareAndSwap only kept the host copy, so
 +     * a title kicking through these imports (KZ3's WWS job queues, func_0008978C) ran its job managers on the
 +     * idle cadence only (zero POKE lines in a whole run). Upstream candidate. */

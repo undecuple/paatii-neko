@@ -2,7 +2,7 @@
 +++ b/runtime/ppu/ppu_loader.cpp
 @@ -1577,24 +1577,42 @@
   * in the walker-bound K4 scene, and one of its two runs stalled at 172 s in a main-thread flag wait, cause open; see
-  * re-notes-spu Round 62). On POSIX (ppu_vm_size != 0, a real range check) the gate stays off. */
+  * the RE notes An earlier test pass). On POSIX (ppu_vm_size != 0, a real range check) the gate stays off. */
  static int s_vm_rd_fast = -1, s_vm_wr_fast = -1;
 +/* KZ3 patch 1091: the lifted code's inline loads (ppu_lifter.py preamble) test one byte per 64 KiB guest page
 + * (layout after soyjxck/ps3recomp's ppu_vm_page.h: RD 1, WR 2, COH 4, ST 8; only RD is used so far). All zero, so

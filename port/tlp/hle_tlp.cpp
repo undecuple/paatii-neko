@@ -1,4 +1,5 @@
-/* Toro Lets Party port: from Killzone 2 bffa40a port/kz2 (names swapped, KZ2-only parts removed). */
+/* Toro Lets Party port: adapted from an earlier PS3 port by the same author (names swapped, parts specific to that
+ * game removed). KZ3 below is the author's unreleased earlier port. */
 /* Toro Lets Party port: HLE for the imports ps3recomp leaves unresolved. From KZ3 78bf574 port/kz3/hle_kz3.cpp: the four
  * handlers whose NIDs TLP v1.01 also imports (EBOOT.imports.json of the first lift: cellKbRead in sys_io,
  * cellFontInitializeWithRevision in cellFont, cellFontInitLibraryFreeTypeWithRevision in cellFontFT, cellSpurs

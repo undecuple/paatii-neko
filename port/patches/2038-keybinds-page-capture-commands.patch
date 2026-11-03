@@ -165,12 +165,12 @@ Host test: tools/smoke/test_pad_keybinds.sh section 5.
      return 0;
  }
  
-+/* ---- KZ3 patch 2038 (D51 hooks A/B): the in-game Keyboard page ----
++/* ---- KZ3 patch 2038 (hooks A/B): the in-game Keyboard page ----
 + * The page (a GUM served by the port, port/kz3/main.cpp) asks the host through text commands
 + * (pad_kb_ui_command); the capture of the next key runs in the pad poll (pad_kb_ui_step). Both are platform-free so
 + * the host test drives them with a fake key state. Rows are the page's order. The page shows the game's own action
 + * name for a pad button row (the GUM reads settings:controllerconfigs/activeconfig/<button> at run time, so it is the
-+ * player's language and active preset; round 38); `label` is the port's own fallback (file comments, host tests) and
++ * player's language and active preset; an earlier test pass); `label` is the port's own fallback (file comments, host tests) and
 + * the page text for the eight stick directions and Start, which have no string of their own in the game. */
 +typedef struct { const char* input; const char* label; const char* button; } PadKbRow;
 +static const PadKbRow pad_kb_rows[] = {
@@ -204,7 +204,7 @@ Host test: tools/smoke/test_pad_keybinds.sh section 5.
 +    int result, vk;             /* how the last capture ended, and its key */
 +    unsigned gen, seen_gen;     /* gen counts binding changes; "poll" reports one once */
 +    int suppress;               /* after a capture: keys stay away from the game until all are up */
-+    int sel, sel_slot;          /* the page's selected cell + 1 ("sel R S", round 38; 0 = page closed, so a zeroed
++    int sel, sel_slot;          /* the page's selected cell + 1 ("sel R S", an earlier test pass; 0 = page closed, so a zeroed
 +                                 * PadKbUi has none): Delete clears it */
 +} PadKbUi;
 +
@@ -251,7 +251,7 @@ Host test: tools/smoke/test_pad_keybinds.sh section 5.
 +        if (down(ctx, pad_kb_keys[i].vk)) { first = pad_kb_keys[i].vk; break; }
 +    if (u->phase == PKB_UI_IDLE) {
 +        if (u->suppress && !first) u->suppress = 0;
-+        /* Round 38: Delete on the page (no capture running) clears the selected cell. sel is set only while the
++        /* An earlier test pass: Delete on the page (no capture running) clears the selected cell. sel is set only while the
 +         * page is open (the page sends "sel R S" from its timer; "sel -1 -1" and "cancel" end it). suppress = one clear per press. */
 +        if (!u->suppress && u->sel > 0 && down(ctx, PKB_VK_CLEAR)) {
 +            int in = pad_kb_row_input(u->sel - 1);
@@ -320,7 +320,7 @@ Host test: tools/smoke/test_pad_keybinds.sh section 5.
 +    return kb->key[in][0] ? kb->key[in][0] : kb->key[in][1];
 +}
 +
-+/* The idle status line (round 38, ui-style.md "Prompts": every input that works): built from the bindings, so it
++/* The idle status line (ui-style.md "Prompts": every input that works): built from the bindings, so it
 + * names the keys the player really has. "Enter change, Delete clear, Left / Right column, R reset, Esc back." */
 +static void pad_kb_ui_hint(const PadKeybinds* kb, char* out, size_t n)
 +{

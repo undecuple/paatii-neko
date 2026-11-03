@@ -1,0 +1,77 @@
+gcm: the per-call tile and zcull log lines are verbose-only.
+Toro's own patch (7xxx).
+What: cellGcmSetTile, SetZcull, BindTile, BindZcull, UnbindTile and UnbindZcull print their line only when
+ps3_log_verbose() is on, like the runtime's other per-call lines ([WAIT], [spurs-job], the null backend's).
+Why: a title that rebinds tiles every frame (Toro: about 8 calls a frame on the main thread) paid an unbuffered
+stdout write per call, 0.2-0.7 ms each under Proton, inside the frame it has to finish before the next vblank.
+Tests: title screen, 25 s, same build (2026-10-27): with the port's PS3_VERBOSE=0 default 27.5 fps and 2,587 log
+lines, with PS3_VERBOSE=1 26.2 fps and 74,272 lines.
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -15,6 +15,7 @@
+ #include "../../runtime/platform/win32_compat.h"
+ #include "../../runtime/ppu/ppu_memory.h"   /* vm_write32 (translate + byte-swap, OOB-safe) */
+ #include "../../runtime/memory/vm.h"    /* VM_HLE_INJECT_BASE */
++#include "../../runtime/ps3_log.h"      /* ps3_log_verbose: per-call tile/zcull lines (patch 7022) */
+ #include "rsx_commands.h"                    /* rsx_state, rsx_process_command_buffer */
+ void cellGcm_spu_guest_write_hook_install(void);   /* patch 2033 */
+ void cellGcm_ppu_store_note_install(void);         /* patch 2082 */
+@@ -4164,8 +4165,8 @@ s32 cellGcmSetTile(u8 index, u8 location, u32 offset, u32 size,
+     if (index >= CELL_GCM_MAX_TILE_COUNT)
+         return CELL_GCM_ERROR_INVALID_VALUE;
+ 
+-    printf("[cellGcmSys] SetTile(index=%u, loc=%u, offset=0x%X, size=0x%X, pitch=%u)\n",
+-           index, location, offset, size, pitch);
++    if (ps3_log_verbose()) printf("[cellGcmSys] SetTile(index=%u, loc=%u, offset=0x%X, size=0x%X, pitch=%u)\n",
++                                  index, location, offset, size, pitch);
+ 
+     s_tiles[index].offset = offset;
+     s_tiles[index].size   = size;
+@@ -4191,8 +4192,8 @@ s32 cellGcmSetZcull(u8 index, u32 offset, u32 width, u32 height,
+     if (index >= CELL_GCM_MAX_ZCULL_COUNT)
+         return CELL_GCM_ERROR_INVALID_VALUE;
+ 
+-    printf("[cellGcmSys] SetZcull(index=%u, offset=0x%X, %ux%u)\n",
+-           index, offset, width, height);
++    if (ps3_log_verbose()) printf("[cellGcmSys] SetZcull(index=%u, offset=0x%X, %ux%u)\n",
++                                  index, offset, width, height);
+ 
+     s_zcull[index].offset      = offset;
+     s_zcull[index].width       = width;
+@@ -4216,7 +4217,7 @@ s32 cellGcmBindTile(u8 index)
+     if (index >= CELL_GCM_MAX_TILE_COUNT)
+         return CELL_GCM_ERROR_INVALID_VALUE;
+ 
+-    printf("[cellGcmSys] BindTile(index=%u)\n", index);
++    if (ps3_log_verbose()) printf("[cellGcmSys] BindTile(index=%u)\n", index);
+     s_tiles[index].bound = 1;
+     return CELL_OK;
+ }
+@@ -4227,7 +4228,7 @@ s32 cellGcmBindZcull(u8 index)
+     if (index >= CELL_GCM_MAX_ZCULL_COUNT)
+         return CELL_GCM_ERROR_INVALID_VALUE;
+ 
+-    printf("[cellGcmSys] BindZcull(index=%u)\n", index);
++    if (ps3_log_verbose()) printf("[cellGcmSys] BindZcull(index=%u)\n", index);
+     s_zcull[index].bound = 1;
+     return CELL_OK;
+ }
+@@ -4238,7 +4239,7 @@ s32 cellGcmUnbindTile(u8 index)
+     if (index >= CELL_GCM_MAX_TILE_COUNT)
+         return CELL_GCM_ERROR_INVALID_VALUE;
+ 
+-    printf("[cellGcmSys] UnbindTile(index=%u)\n", index);
++    if (ps3_log_verbose()) printf("[cellGcmSys] UnbindTile(index=%u)\n", index);
+     s_tiles[index].bound = 0;
+     return CELL_OK;
+ }
+@@ -4249,7 +4250,7 @@ s32 cellGcmUnbindZcull(u8 index)
+     if (index >= CELL_GCM_MAX_ZCULL_COUNT)
+         return CELL_GCM_ERROR_INVALID_VALUE;
+ 
+-    printf("[cellGcmSys] UnbindZcull(index=%u)\n", index);
++    if (ps3_log_verbose()) printf("[cellGcmSys] UnbindZcull(index=%u)\n", index);
+     s_zcull[index].bound = 0;
+     return CELL_OK;
+ }

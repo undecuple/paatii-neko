@@ -82,7 +82,7 @@ diff --git a/runtime/spu/spurs_policy.c b/runtime/spu/spurs_policy.c
  }
  uint32_t spu_pm_ctx_pc(void* p) { return p ? (((spu_context*)p)->pc & SPU_LS_MASK) : 0; }  /* KZ3 patch 1013 */
 +/* KZ3 patch 1047/1048: reservation, atomic and event state of a lane (the stuck-run report), the jm dispatcher's
-+ * state words (re-data 71: LS 0x1410 = EA of the list it waits on, 0x1440, 0x14E0-0x14FF) and the first 16 words
++ * state words (RE report 71: LS 0x1410 = EA of the list it waits on, 0x1440, 0x14E0-0x14FF) and the first 16 words
 + * of the 128-byte line at that EA (the dependency counters). */
 +void spu_pm_ctx_describe_resv(void* p, char* out, int n)
 +{
@@ -103,7 +103,7 @@ diff --git a/runtime/spu/spurs_policy.c b/runtime/spu/spurs_policy.c
 +        for (int i = 0; i < 16 && o < n; i++) { uint32_t t; memcpy(&t, vm_base + ea + 4 * i, 4); o += snprintf(out + o, n - o, " %08X", __builtin_bswap32(t)); }
 +    }
 +}
-+/* KZ3 patch 1048 (spu round 34, re-data 70 section 5): a policy-module run budget, KZ3_SPURS_RUN_MS (0 = off,
++/* KZ3 patch 1048 (RE report 70 section 5): a policy-module run budget, KZ3_SPURS_RUN_MS (0 = off,
 + * the default). The HLE kernel never switches a running module out: selectWorkload always answers "continue"
 + * and a lane that waits for something only another run of the same workload produces spins forever on the
 + * host, holding the workload's claim (gp-t2: jm_hiprio from t = 411 s, every DeferredSchedule job behind it).

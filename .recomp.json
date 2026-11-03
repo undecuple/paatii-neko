@@ -1,6 +1,7 @@
 {
   "$schema": "https://recomp.fyi/schema/v1.json",
   "game": "Toro! Let's Party!",
+  "wikidata": "Q11322165",
   "system": "PS3",
   "type": "recomp",
   "original": {

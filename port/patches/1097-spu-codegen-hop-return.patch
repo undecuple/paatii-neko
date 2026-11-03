@@ -29,7 +29,7 @@ Upstream candidate (helpers, the hop return).
      return NULL;
  }
 +/* KZ3 patch 1097: the memo probe inline (spu_ib_direct runs it on every computed direct hop; the out-of-line
-+ * spu_lookup call was 2.4 % of the audio job in spu round 71). Same answer as spu_lookup: a memo hit is what
++ * spu_lookup call was 2.4 % of the audio job in an earlier test pass). Same answer as spu_lookup: a memo hit is what
 + * spu_lookup returns for that key, and every other case calls it. */
 +static inline __attribute__((always_inline)) spu_fn spu_lookup_memo(uint32_t addr, int image_id)
 +{
@@ -110,12 +110,12 @@ Upstream candidate (helpers, the hop return).
   * or 0 (then the old trampoline path runs). The host stack does not grow (tail calls). KZ3_SPU_HOP=0 = old path;
   * any dispatch diagnostic switch (SPU_TAILRET, SPU_JOBTRACE, SPU_POLLTRACE, ...) also turns it off. */
  typedef void (*spu_hop_fn)(spu_context*);
-+/* KZ3 patch 1097 (spu round 72): a computed hop to ctx->hop_ret_pc (the innermost open bracket's return pc) returns
++/* KZ3 patch 1097: a computed hop to ctx->hop_ret_pc (the innermost open bracket's return pc) returns
 + * to the host caller with pc = the target and nothing pending. The old path set the resolver trampoline and returned;
 + * the bracket's drain then saw "resolver pending, pc == its return pc" and returned before any hook (the first test
 + * of spu_drain_call_body's loop); with nothing pending the inline spu_drain_call takes its own fast path (same depth
 + * limit test), and spu_drain_call_body's loop ends on the same pc test. Skipped while the frame-trace job bracket
-+ * (g_kz3_wtrace, closed by spu_drain_call_full) is armed. 4.5-5.3 M such hops per 10 s in K2 (spu round 71). */
++ * (g_kz3_wtrace, closed by spu_drain_call_full) is armed. 4.5-5.3 M such hops per 10 s in K2. */
 +extern void (*g_kz3_wtrace)(const char*, int, uint32_t, uint64_t, uint64_t);
  extern int g_spu_hop_on;                                  /* -1 = not decided yet, 0 = off, 1 = on (spu_drain.c) */
  void spu_hop_init(void);                                  /* spu_drain.c: decides g_spu_hop_on (env) */
@@ -136,8 +136,8 @@ Upstream candidate (helpers, the hop return).
   * The canonical immediates 173 and 155 are identity conversions. */
  /* patch 1079: forced inline (the lifted code passes i8 as a constant, so exp2 folds), the recompute out of line */
 -SPU_HOT u128 spu_cflts(u128 a, int i8){ u128 r; double f=exp2((double)(173-i8));
-+/* KZ3 patch 1097 (spu round 72): the four lanes in SSE4.1 double arithmetic instead of a scalar loop per lane (the
-+ * mixer's cfltu was 2.6 % of the audio job, spu round 71). Same operations as the loop: the float lane widened to
++/* KZ3 patch 1097: the four lanes in SSE4.1 double arithmetic instead of a scalar loop per lane (the
++ * mixer's cfltu was 2.6 % of the audio job, an earlier test pass). Same operations as the loop: the float lane widened to
 + * double (exact), times the power of two (exact; 2^-82..2^173 built from its exponent bits), clamped, truncated
 + * towards zero; cfltu has no unsigned double->u32 conversion in SSE, so it floors (= truncates for v >= 0) and
 + * converts floor(v) - 2^31 (exact: an integer below 2^32), then flips the top bit. csflt/cuflt: the integer widened
@@ -195,7 +195,7 @@ Upstream candidate (helpers, the hop return).
 +#endif
  SPU_HOT u128 spu_fm(u128 a, u128 b) { u128 r; SPU__F2(r, a, b, _mm_mul_ps, a._f32[i] * b._f32[i]); SPU_XR_RET_Q(spu__xr_mask3(a, b, r), r, a, b, SPU_XR_FM); }   /* patch 1079 */
  /* KZ3 patch 1035: fused multiply-add without the libm call. Without -mfma, fmaf is MinGW's software
-  * routine (with frexp/ldexp inside; ~3 % of the level's SPURS samples in spu round 21). The product of two
+  * routine (with frexp/ldexp inside; ~3 % of the level's SPURS samples in an earlier test pass). The product of two
 @@ -641,7 +683,10 @@
   * fmaf: the mixer's silent buffers made every sum an exact zero, which the scalar rule sent to fmaf.
   * A lane outside the rule (float subnormal/overflow range, NaN/inf, a rounding midpoint) runs all four
@@ -205,18 +205,18 @@ Upstream candidate (helpers, the hop return).
 +#if defined(__FMA__)
 +#include <immintrin.h>
 +#endif
- /* KZ3 patch 1040 (spu round 28): SPU single-precision flush-to-zero for fma/fms/fnms results.
+ /* KZ3 patch 1040: SPU single-precision flush-to-zero for fma/fms/fnms results.
   * g_kz3_spu_slowcg == 0 (KZ3_SPU_FASTCG >= 1040, the default; 2 = the 1038 fast paths without FTZ, 1 = the old
   * paths; one variable, so each op still loads one flag): a result that would be a float subnormal is +-0 with the
 @@ -684,17 +729,39 @@
      const __m128d al = _mm_and_pd(sl, absm), ah = _mm_and_pd(sh, absm);
      const __m128d lo = _mm_set1_pd(0x1p-126);
      const int ftz = cgm == 0;
-+    /* KZ3 patch 1097 (spu round 72): a rounding midpoint is only a problem when the double sum was itself rounded.
++    /* KZ3 patch 1097: a rounding midpoint is only a problem when the double sum was itself rounded.
 +     * When p + c is exact in double (TwoSum error 0; the product p = a*b of two floats is always exact), s IS the
 +     * fused value and its one rounding to float is the correctly rounded fma, the same value fmaf returns. Products
 +     * of short mantissas (PCM samples times gains) land on midpoints often: the audio mixer sent them all to the
-+     * per-lane reference path (spu__fma4_ref 2.4 % of the job, spu round 71). Normal-range lanes only, as before. */
++     * per-lane reference path (spu__fma4_ref 2.4 % of the job, an earlier test pass). Normal-range lanes only, as before. */
 +    {
 +        __m128 A = av, B = bv, C = cv;
 +        const __m128 sgn = _mm_castsi128_ps(_mm_set1_epi32((int)0x80000000u));
@@ -256,7 +256,7 @@ Upstream candidate (helpers, the hop return).
  SPU_HOT u128 spu__fma4(u128 a, u128 b, u128 c, int negb, int negc) {
      const int cgm = g_kz3_spu_slowcg;
 +#if defined(__FMA__)
-+    /* KZ3 patch 1097 (spu round 72): with -mfma (KZ3_SPU_ISA) one fused multiply-add per vector. Its result r is the
++    /* KZ3 patch 1097: with -mfma (KZ3_SPU_ISA) one fused multiply-add per vector. Its result r is the
 +     * correctly rounded fused value, which is what the double path below returns for every lane it takes inline or
 +     * through fmaf. The lanes that path treats specially are all caught by r's exponent: exponent 255 (an inf/NaN
 +     * operand, i.e. a patch-1071 exponent-255 lane, or an overflow), exponent 0 with a non-zero mantissa (the FTZ
@@ -291,10 +291,10 @@ Upstream candidate (helpers, the hop return).
 -static inline u128 spu_fsmbi(int32_t imm) {
 -    u128 r; uint32_t v = imm & 0xFFFF;
 -    for(int i=0;i<16;i++) r._u8[SPU_W(i)] = ((v>>(15-i))&1) ? 0xFFu : 0;
-+/* KZ3 patch 1097 (spu round 72): the 16-bit mask expands one nibble per SPU word (host _u32[k] is SPU word k's
++/* KZ3 patch 1097: the 16-bit mask expands one nibble per SPU word (host _u32[k] is SPU word k's
 + * value, SPU byte 4k its top byte), so each word is a 16-entry table entry; with the lifter's constant immediate the
 + * whole vector folds to a constant (the byte loop above was not unrolled by GCC -O2: 3.4 % of the audio job's
-+ * samples in spu round 71). Same bytes as the loop (tools/spu/test_spu_cg72.sh checks all 65536 masks). */
++ * samples in an earlier test pass). Same bytes as the loop (tools/spu/test_spu_cg72.sh checks all 65536 masks). */
 +static const uint32_t spu__fsmb_nib[16] = {
 +    0x00000000u, 0x000000FFu, 0x0000FF00u, 0x0000FFFFu, 0x00FF0000u, 0x00FF00FFu, 0x00FFFF00u, 0x00FFFFFFu,
 +    0xFF000000u, 0xFF0000FFu, 0xFF00FF00u, 0xFF00FFFFu, 0xFFFF0000u, 0xFFFF00FFu, 0xFFFFFF00u, 0xFFFFFFFFu};
@@ -337,7 +337,7 @@ Upstream candidate (helpers, the hop return).
 -    for(int k=0;k<8;k++) r._u8[SPU_W(p+k)] = (uint8_t)k;   /* a SPU bytes 0..7 (preferred dword) */
 -    return r;
 -}
-+/* KZ3 patch 1097 (spu round 72): the controls as tables (16 cbd, 8 chd, 4 cwd, 2 cdd entries) instead of a 16-byte
++/* KZ3 patch 1097: the controls as tables (16 cbd, 8 chd, 4 cwd, 2 cdd entries) instead of a 16-byte
 + * loop per call: spu_cwd_pos was 4.5 % of the audio job's samples (spu rounds 70-71). Word j of the base control is
 + * SPU bytes 4j..4j+3 = selectors 0x10+4j..0x13+4j; the insert replaces SPU byte p (cbd: 0x03), halfword p (chd:
 + * 0x0203), word p (cwd: 0x00010203) or doubleword p (cdd: 0x00010203 0x04050607). Same bytes as the old loops

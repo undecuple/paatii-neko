@@ -20,7 +20,7 @@ KZ3 crash handler minidump (pass 33): ppu_crash_report writes the minidump throu
 -            char* dot = strrchr(dmp, '.');
 -            if (dot && (size_t)(dot - dmp) + 5 < sizeof dmp) strcpy(dot, ".dmp");
 -            /* KZ3 patch 2031: name the crash file before the minidump; the line after it never appeared in the
--             * round-31 test (the process ended with the exception code and a 14 kB dump: ASSUMPTION the dump
+-             * earlier test (the process ended with the exception code and a 14 kB dump: ASSUMPTION the dump
 -             * call faults inside the handler), so the path must be on record before the attempt. */
 -            fprintf(stderr, "[CRASH] crash file %s, writing minidump %s\n", crash, dmp);
 -            fflush(stderr);
@@ -41,7 +41,7 @@ KZ3 crash handler minidump (pass 33): ppu_crash_report writes the minidump throu
 +        fflush(stderr);
 +        /* KZ3 patch 2032: the minidump through kz3_log_write_minidump (helper thread, dbghelp loaded at init, the
 +         * SDK's packed MINIDUMP_EXCEPTION_INFORMATION). The hand-rolled struct of 2030/2031 had ExceptionPointers at
-+         * +8 where dbghelp reads +4, so dbghelp faulted on its own thread and nothing below ever ran (rsx round 33). */
++         * +8 where dbghelp reads +4, so dbghelp faulted on its own thread and nothing below ever ran. */
 +        if (crash && *crash) kz3_log_write_minidump(crash, ep, (unsigned long)GetCurrentThreadId());
          kz3_crash_notify(crash ? crash : "");
      }

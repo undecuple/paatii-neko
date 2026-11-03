@@ -6,7 +6,7 @@
  
 -static inline u128 spu_ls_read128(const spu_context* ctx, uint32_t lsa)
 +/* KZ3 patch 1035: the hot LS accessors and SPU helpers are forced inline. Plain `static inline` was not
-+ * enough: in the large lifted functions GCC's growth limits left out-of-line copies (spu round 21 profile:
++ * enough: in the large lifted functions GCC's growth limits left out-of-line copies (an earlier test pass profile:
 + * spu_ls_read128 1.2 %, spu_shufb 5.3 % of the level's SPURS thread samples). */
 +#if defined(__GNUC__) || defined(__clang__)
 +#  define SPU_HOT static inline __attribute__((always_inline))
@@ -82,7 +82,7 @@
 -static inline u128 spu_fms(u128 a, u128 b, u128 c)  { u128 r; for(int i=0;i<4;i++) r._f32[i]=fmaf(a._f32[i], b._f32[i], -c._f32[i]); return r; }
 -static inline u128 spu_fnms(u128 a, u128 b, u128 c) { u128 r; for(int i=0;i<4;i++) r._f32[i]=fmaf(a._f32[i], -b._f32[i], c._f32[i]); return r; }
 +/* KZ3 patch 1035: fused multiply-add without the libm call. Without -mfma, fmaf is MinGW's software
-+ * routine (with frexp/ldexp inside; ~3 % of the level's SPURS samples in spu round 21). The product of two
++ * routine (with frexp/ldexp inside; ~3 % of the level's SPURS samples in an earlier test pass). The product of two
 + * floats is exact in double, so s = a*b + c has one double rounding; rounding s to float then equals the
 + * correctly rounded fused result unless s sits exactly on a float rounding midpoint (low 29 bits
 + * 0x10000000) or outside the normal float range (zero, subnormal, overflow, inf, NaN): those rare cases

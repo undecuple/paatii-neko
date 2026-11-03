@@ -1,0 +1,56 @@
+gcm: the FIFO walker takes the new-style JUMP (offset | 1) as well as the old one (0x20000000 | offset).
+Toro's own patch (7xxx).
+What: the walker's control-word decode treats (w & 0xE0000003) == 1 as a JUMP to w & 0xFFFFFFFC (the RSX's new jump
+form) wherever it decoded the old JUMP: the main loop (with the self-JUMP park check and the GCM_RECDBG print) and the
+park diagnostics' scans of IO memory.
+Why (test runs on the story book scene, 2026-10-22): a new-style JUMP such as 0x00007D01 was decoded as a count-0
+method (subchannel 3, method 0x1D00), so the walker fell through into the data after it and wrote it into registers
+until a resync; junk in NV4097_SET_TRANSFORM_BRANCH_BITS (0x1FF8), which the game sets only on change, then made
+every BRB/CLB vertex program branch wrong (patch 7019): the room scene rendered black or scrambled. Read-back 50 ms
+later showed the word unchanged, so it was the walker's decode, not a buffer still being written.
+Tests: room scene at 470 s, twice (2026-10-26, with the port's GCM_FLIPCB_ONTICK=1 default): 0 FIFO resyncs, only
+the game's own 0x1FF8 values (0x0, 0x1, 0x10), room drawn correctly.
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -2541,11 +2541,15 @@
+             continue;
+         }
+ 
+-        if (type == 1) {                       /* JUMP: 0x20000000 | offset */
++        /* patch 7020: the new-style JUMP, offset | 1 ((w & 0xE0000003) == 1, offset w & 0xFFFFFFFC). It was decoded as
++         * a count-0 method (0x00007D01: subchannel 3, method 0x1D00), so the walker fell through into the data after
++         * it and wrote garbage into registers (e.g. junk in SET_TRANSFORM_BRANCH_BITS) until a resync. */
++        const int new_jump = (w & 0xE0000003u) == 1u;
++        if (type == 1 || new_jump) {           /* JUMP: 0x20000000 | offset, or offset | 1 */
+             { static int _rd = -1; if (_rd < 0) _rd = getenv("GCM_RECDBG") ? 1 : 0;
+               if (_rd) fprintf(stderr, "[JMP] %08X -> %08X (put=%08X)\n",
+-                               s_fifo_getoff, w & 0x1FFFFFFCu, put); }
+-            { u32 tgt = w & 0x1FFFFFFCu;
++                               s_fifo_getoff, new_jump ? (w & 0xFFFFFFFCu) : (w & 0x1FFFFFFCu), put); }
++            { u32 tgt = new_jump ? (w & 0xFFFFFFFCu) : (w & 0x1FFFFFFCu);
+               if (!gcm_io2ea(tgt)) { gcm_fifo_bad_branch("JUMP", tgt, w); gcm_fifo_dump_around(s_fifo_getoff); gcm_fifo_resync_why("unmapped-JUMP", &s_fifo_getoff, put); break; }
+               /* A JUMP to its own address is the "park the RSX here" idiom:
+                * the title leaves it at the write head so the GPU stops if it
+@@ -2599,8 +2603,8 @@
+                                 fprintf(stderr, "\n"); }
+                             u32 base = s_config.ioAddress, sz = s_config.ioSize; int hits = 0;
+                             for (u32 q = 0; q + 4 <= sz && hits < 24; q += 4) {
+-                                u32 w = vm_read32(base + q), t = w & 0x1FFFFFFCu;
+-                                if (((w & 0xE0000003u) == 0x20000000u || (w & 0xE0000003u) == 2u) &&
++                                u32 w = vm_read32(base + q), t = (w & 0xE0000003u) == 1u ? (w & 0xFFFFFFFCu) : (w & 0x1FFFFFFCu);
++                                if (((w & 0xE0000003u) == 0x20000000u || (w & 0xE0000003u) == 2u || (w & 0xE0000003u) == 1u) &&   /* patch 7020: new JUMP too */
+                                     t + 0x4000u > s_fifo_getoff && t <= s_fifo_getoff && t != q) {
+                                     hits++;
+                                     fprintf(stderr, "[park-scan] %s at io 0x%08X -> 0x%08X; before:", (w & 3u) == 2u ? "CALL" : "JUMP", q, t);
+@@ -2634,8 +2638,8 @@
+                                         fprintf(stderr, "\n"); }
+                                     /* Which JUMP/CALL in IO memory leads into the 0x400 bytes before it. */
+                                     for (u32 q = 0; q + 4 <= sz; q += 4) {
+-                                        u32 w = vm_read32(base + q), t = w & 0x1FFFFFFCu;
+-                                        if (((w & 0xE0000003u) == 0x20000000u || (w & 3u) == 2u) &&
++                                        u32 w = vm_read32(base + q), t = (w & 0xE0000003u) == 1u ? (w & 0xFFFFFFFCu) : (w & 0x1FFFFFFCu);
++                                        if (((w & 0xE0000003u) == 0x20000000u || (w & 3u) == 2u || (w & 0xE0000003u) == 1u) &&   /* patch 7020 */
+                                             t + 0x400 > o && t <= o && t != q)
+                                             fprintf(stderr, "[park-diag]   %s at io 0x%08X -> 0x%08X\n",
+                                                     (w & 3u) == 2u ? "CALL" : "JUMP", q, t);

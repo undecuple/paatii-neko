@@ -16,7 +16,7 @@ present loop that sleeps between passes).
      s_spu_blk_w = 0;
  }
  
-+/* KZ3 patch 1087 (spu round 66): the walker waits for an SPU-patched park on an event.
++/* KZ3 patch 1087: the walker waits for an SPU-patched park on an event.
 + *
 + * KZ3 ends each frame's FIFO at a JUMP-to-self park that SPU job 36 (Gfx.Post.Unlock, image 244) overwrites with a
 + * PUT (patch 1007 waits for it). The drain used to end its pass on the park and the port's present loop slept 4 ms

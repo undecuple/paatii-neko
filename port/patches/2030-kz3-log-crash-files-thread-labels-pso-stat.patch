@@ -46,7 +46,7 @@ Not here: the HardExit (0x8CF08) override, which belongs to the 1.14 build (swit
      }
      fflush(stderr); fflush(stdout);
 +#ifdef KZ3_LOG_REDIRECT_STDIO
-+    /* KZ3 patch 2030 (D50 logger): the [CRASH] lines above went to the log file as errors; add the crash file
++    /* KZ3 patch 2030 (logger): the [CRASH] lines above went to the log file as errors; add the crash file
 +     * (time, thread, reason, the last 200 log lines) and a minidump beside it, then let the port tell the player. */
 +    {
 +        char reason[128], details[256];
@@ -200,7 +200,7 @@ Not here: the HardExit (0x8CF08) override, which belongs to the 1.14 build (swit
  }
  
 +/* KZ3 patch 2030: PSO / shader-compile statistics on the walker thread, one [pso-stat] line per minute of run time
-+ * with any PSO built (minute = ms since process start / 60000). For the shader preload decision (rsx round 31):
++ * with any PSO built (minute = ms since process start / 60000). For the shader preload decision:
 + * miss = the whole PSO cache-miss path (decompile + compile or disk load + CreateGraphicsPipelineState).
 + * LD_PSO_STAT=0 turns it off. */
 +typedef struct { unsigned n, max_us; unsigned long long us; } ld_pstat_acc;

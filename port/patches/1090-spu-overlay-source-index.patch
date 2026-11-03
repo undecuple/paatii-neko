@@ -10,7 +10,7 @@ open-addressed set. Same overlay for every GET (tools/spu/test_spu_ovl_index.sh 
  #define SPU_OVL_SRC_MAX 128
  static spu_ovl_src s_ovl_src[SPU_OVL_SRC_MAX];
  static int s_ovl_src_count = 0;
-+/* KZ3 patch 1090 (spu round 67): spu_overlay_note_get scanned every registered source on every MFC GET (a memcmp per
++/* KZ3 patch 1090: spu_overlay_note_get scanned every registered source on every MFC GET (a memcmp per
 + * content-signature source for each GET >= 512 bytes; 0.8 % of the K4 SPU samples). The sources are now chained by
 + * hash buckets, in registration order: source EA for the EA sources, the first signature word for the signature
 + * sources. A lookup walks the two chains and keeps the lowest index that matches, which is the entry the linear scan

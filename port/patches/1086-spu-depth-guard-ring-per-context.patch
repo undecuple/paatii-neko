@@ -21,7 +21,7 @@ committed): 6 threads, 1.8 -> 10.3 ns per call with the shared ring vs 0.4 ns wi
 -    s_ring[s_n % RING] = ((uint32_t)ctx->pc & SPU_LS_MASK);
 -    s_n++;
 -
-+    /* KZ3 patch 1086 (spu round 66): the ring of recent drain sites was one static array and counter written here
++    /* KZ3 patch 1086: the ring of recent drain sites was one static array and counter written here
 +     * by every SPU host thread on every full drain: a data race, and a cache line bouncing between the cores of the
 +     * five HiPrio kernel threads (spu_depth_guard was 2.3 % of the K4 SPU samples, spu-66-trace2). The report reads
 +     * this context's own step ring instead (recent_pc: every drain step, spu_task_launch_check and patch 1068's

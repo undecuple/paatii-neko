@@ -50,9 +50,9 @@ Statistics: [pso-async] every 256 frames once builds ran.
  }
  
 +
-+/* ===================== KZ3 patch 2048: asynchronous PSO builds (LD_PSO_ASYNC, default on since round 50; 0 = synchronous) =====================
++/* ===================== KZ3 patch 2048: asynchronous PSO builds (LD_PSO_ASYNC, default on since an earlier test pass; 0 = synchronous) =====================
 + * A walker PSO miss normally decompiles, compiles the VS/PS (D3DCompile) and creates the PSO on the walker thread:
-+ * at a cold level start (K4 frozen_shores, empty shader cache, rsx round 48) 245 misses took 16.4 s of walker time
++ * at a cold level start (K4 frozen_shores, empty shader cache, an earlier test pass) 245 misses took 16.4 s of walker time
 + * and the game's Gfx jobs stalled ~6 s on the RSX label. With LD_PSO_ASYNC=1 the walker still decompiles and looks
 + * the blobs up (memory, then the disk cache), then hands the HLSL, render state and layout to worker threads
 + * (LD_PSO_ASYNC_THREADS, default 3) that compile the missing blobs and create the PSO (through the 2031 pipeline
@@ -91,7 +91,7 @@ Statistics: [pso-async] every 256 frames once builds ran.
 +static int ld_apso_on(void)
 +{
 +    static int on = -1;
-+    /* Default on since rsx round 50 (K4 cold start: level-start stall gone, fps_window A-faster 3/3); LD_PSO_ASYNC=0
++    /* Default on since an earlier test pass (K4 cold start: level-start stall gone, fps_window A-faster 3/3); LD_PSO_ASYNC=0
 +     * restores the synchronous builds. */
 +    if (on < 0) { const char* e = getenv("LD_PSO_ASYNC"); on = (e && *e) ? (atoi(e) != 0) : 1;
 +                  fprintf(stderr, "[pso-async] %s (LD_PSO_ASYNC=%s)\n", on ? "on" : "off", e && *e ? e : "<unset>, default on"); }
@@ -141,7 +141,7 @@ Statistics: [pso-async] every 256 frames once builds ran.
 +        if (!j) continue;
 +        LARGE_INTEGER q0, q1, q2, f; QueryPerformanceFrequency(&f); QueryPerformanceCounter(&q0);
 +        /* Owned blobs first (always compiled and published, even when the other stage failed: dependents wait on
-+         * them), then the ones another job compiles (rsx round 50: one in-flight compile per blob). */
++         * them), then the ones another job compiles (an earlier test pass: one in-flight compile per blob). */
 +        if (!j->vs && (j->vs_own || !j->vs_e)) j->vs_new = (u8)ld_apso_compile(j->vs_src, j->vs_len, "vs_5_0", j->vs_e, &j->vs);
 +        if (!j->ps && (j->ps_own || !j->ps_e)) j->ps_new = (u8)ld_apso_compile(j->ps_src, j->ps_len, "ps_5_0", j->ps_e, &j->ps);
 +        if (!j->vs && j->vs_e && !j->vs_own) j->vs = ld_apso_wait(j->vs_e);
@@ -200,7 +200,7 @@ Statistics: [pso-async] every 256 frames once builds ran.
 +    j->ps = shader_blob_cache_find(&g.ps_blobs, ps_hlsl, j->ps_len, j->ps_hash, &pb, &seen);
 +    if (!j->ps && (j->ps = ld_pstat_disk_load('P', ps_hlsl, j->ps_len, j->ps_hash)) != NULL)
 +        shader_blob_cache_insert_accounted(&g.ps_blobs, ps_hlsl, j->ps_len, j->ps_hash, j->ps, 'P', seen);
-+    /* Blobs not in the caches: one in-flight compile each (rsx round 50). Only the walker touches the table. */
++    /* Blobs not in the caches: one in-flight compile each. Only the walker touches the table. */
 +    if (!j->vs) { int own = 0; j->vs_e = rsx_apso_blob_acquire(&g_apso.tab, 'V', j->vs_src, j->vs_len, j->vs_hash, &own); j->vs_own = (u8)own; }
 +    if (!j->ps) { int own = 0; j->ps_e = rsx_apso_blob_acquire(&g_apso.tab, 'P', j->ps_src, j->ps_len, j->ps_hash, &own); j->ps_own = (u8)own; }
 +    j->key = key; j->rs = *rs;

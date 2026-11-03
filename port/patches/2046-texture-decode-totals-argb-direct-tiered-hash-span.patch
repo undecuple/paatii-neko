@@ -23,7 +23,7 @@ three modes (KZ3_GW_TIER=0/1/2) with the new case Q5.
 +++ b/libs/video/rsx_live_draw.c	2026-10-13 06:02:02.318270906 -0500
 @@ -147,7 +147,10 @@
  #define MAX_TEXTURES     8192   /* patch 2033: was 1024; the level binds ~2,500 distinct textures a frame and the
-                                  * LRU evicted ~243 of them per frame (re-data 72), each decoded again */
+                                  * LRU evicted ~243 of them per frame (RE report 72), each decoded again */
  #define TEX_INDEX_SIZE   (4u * MAX_TEXTURES)   /* patch 2033: hash index over g.textures, power of two */
 -#define LD_TEX_HASH_SPAN_DEFAULT 0   /* patch 2033: LD_TEX_HASH_SPAN default (frames; 0 = hash every frame) */
 +#define LD_TEX_HASH_SPAN_DEFAULT 4   /* patch 2033: LD_TEX_HASH_SPAN default (frames; 0 = hash every frame); patch 2046:
@@ -66,7 +66,7 @@ three modes (KZ3_GW_TIER=0/1/2) with the new case Q5.
 +}
  /* Patch 2011: swizzled 3D textures interleave x, y and z bits in that order
   * while each axis still has bits left (the 2D order extended by one axis).
-  * ASSUMPTION: from the 2D layout; KZ3's one 3D texture (round 11 capture) is
+  * ASSUMPTION: from the 2D layout; KZ3's one 3D texture (an earlier capture) is
 @@ -2529,6 +2545,8 @@
  }
  static unsigned long long g_ld_tex_inplace_n;
@@ -287,7 +287,7 @@ three modes (KZ3_GW_TIER=0/1/2) with the new case Q5.
 + * R8G8B8A8_UNORM resource) and the RSX remap goes into the SRV component mapping: output R = comp 1 (R), G = 2,
 + * B = 3, A = 0 (A), a select of source channel k = resource component k, op 0 / op 1 = FORCE_0 / FORCE_1,
 + * exactly decode_texel's default case + remap_comp. In the KZ3 level the SPU post chain rewrites a 1280x720 one
-+ * (1:0x01310400) and a 160x90 one every frame; the per-texel decode of the big one was 3.4 ms a frame (round 46
++ * (1:0x01310400) and a 160x90 one every frame; the per-texel decode of the big one was 3.4 ms a frame (an earlier test pass
 + * run r46-prof). LD_ARGB_DIRECT=0 restores the RGBA8 decode. */
 +static int ld_argb_direct_on(void)
 +{

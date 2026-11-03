@@ -9,7 +9,7 @@ KZ3 patch 1060 (pass 46): two opt-in SPURS parallelism switches for the level's 
 +    /* KZ3 patch 1060: KZ3_SPURS_NSPUS=n (1..6, default 0 = the game's value): the instance gets n virtual SPUs
 +     * when the game asked for fewer, so the kernel threads and the lane cap follow n. KZ3 creates HiPrio and LoPrio
 +     * with nSpus=2 each and never reads the count back (no cellSpursGetNumSpuThread import), so its per-SPU rows
-+     * follow its own constant; spu round 46: raising only the lanes (KZ3_SPURS_LANES=4) hung wid 7's lanes 2-3. */
++     * follow its own constant; an earlier test pass: raising only the lanes (KZ3_SPURS_LANES=4) hung wid 7's lanes 2-3. */
 +    { static int s_ns = -1;
 +      if (s_ns < 0) { const char* e = getenv("KZ3_SPURS_NSPUS"); s_ns = e ? atoi(e) : 0;
 +                      if (s_ns < 0) s_ns = 0; if (s_ns > 6) s_ns = 6; }
@@ -27,7 +27,7 @@ KZ3 patch 1060 (pass 46): two opt-in SPURS parallelism switches for the level's 
 +            /* KZ3 patch 1060: KZ3_SPURS_LANES=n (1..6, default 0 = the instance's nSpus) raises that cap on the
 +             * host: the workload's own maxContention still applies (KZ3's frame job workload declares 5, the
 +             * mixer 1), the PM contexts are per (wid, spuNum) up to 6, and the game's per-SPU rows are sized by
-+             * its maxContention, not by nSpus. spu round 46: HiPrio has nSpus=2 so wid 1 ran on 2 lanes while
++             * its maxContention, not by nSpus. an earlier test pass: HiPrio has nSpus=2 so wid 1 ran on 2 lanes while
 +             * both kernel threads sat 72 % in pmrun; 4 lanes is the A/B. */
 +            { static int s_lanes = -1;
 +              if (s_lanes < 0) { const char* e = getenv("KZ3_SPURS_LANES"); s_lanes = e ? atoi(e) : 0;

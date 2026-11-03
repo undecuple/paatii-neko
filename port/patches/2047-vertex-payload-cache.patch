@@ -62,7 +62,7 @@ the fill (spans merged per location; the copy counts against the budget); 0 = th
 + * Validity per source span (the index range and each attribute's element range, from the fetch plan): no tracked
 + * write this frame (g_ld_td), none since the frame the entry was filled (g_ld_pg_stamp), and a sampled content
 + * hash (16 bytes at 9 spread positions) unchanged, which catches an untracked writer replacing a whole buffer
-+ * (the level streamer's PPU stores, round 46: [tex-untracked]). Round 49: with LD_VTX_CACHE_FULL=1 (default) the
++ * (the level streamer's PPU stores, an earlier test pass: [tex-untracked]). An earlier test pass: with LD_VTX_CACHE_FULL=1 (default) the
 + * sampled hash is replaced by a full compare of the source bytes against a copy kept at the fill (spans merged per
 + * location), which also catches a PPU ring rewritten outside the samples. Local memory only unless LD_VTX_CACHE_MAIN=1.
 + * An entry is filled at the second sight of its key; one invalidated twice by tracked writes stays uncached
@@ -85,9 +85,9 @@ the fill (spans merged per location; the copy counts against the budget); 0 = th
 +    u32 n_verts, n_source_refs, n_tri, vb_bytes, ib_bytes;
 +    u8* data;          /* vb_bytes of payload, then ib_bytes of u32 indices */
 +    ld_vc_span spans[LD_VC_SPANS];
-+    u8 n_cmp;          /* round 49: the spans merged per location (overlaps and gaps < 256 bytes joined) */
++    u8 n_cmp;          /* an earlier test pass: the spans merged per location (overlaps and gaps < 256 bytes joined) */
 +    ld_vc_span cmp[LD_VC_SPANS];
-+    u8* src;           /* round 49: a copy of the source bytes of every cmp span, compared in full on a hit */
++    u8* src;           /* an earlier test pass: a copy of the source bytes of every cmp span, compared in full on a hit */
 +    u32 src_bytes;
 +} ld_vc_entry;
 +static ld_vc_entry* g_vc;
@@ -98,7 +98,7 @@ the fill (spans merged per location; the copy counts against the budget); 0 = th
 +                verify_ok, verify_bad, evict, cmp_bytes; } g_vc_st;
 +
 +static void write_topology_indices(u32 prim, u32* indices);
-+static int ld_vc_full(void);   /* round 49 */
++static int ld_vc_full(void);   /* an earlier test pass */
 +
 +static int ld_vc_mode(void)   /* 0 off, 1 on, 2 verify */
 +{
@@ -149,7 +149,7 @@ the fill (spans merged per location; the copy counts against the budget); 0 = th
 +    if (dc.n_idx) {
 +        rsx_dsp_index_array ia; rsx_dsp_get_index_array(&g.rsx, &ia);
 +        k[n++] = ia.location; k[n++] = ia.offset; k[n++] = (u32)ia.is_u32;
-+        static int no_restart = -1;   /* round 49: read once (a getenv per indexed draw cost the walker time) */
++        static int no_restart = -1;   /* an earlier test pass: read once (a getenv per indexed draw cost the walker time) */
 +        if (no_restart < 0) no_restart = getenv("RSX_NO_RESTART") != NULL;
 +        const int ren = !no_restart && rsx_dsp_restart_index_enabled(&g.rsx, ia.is_u32);
 +        k[n++] = (u32)ren; k[n++] = ren ? rsx_dsp_restart_index(&g.rsx) : 0u;
@@ -168,9 +168,9 @@ the fill (spans merged per location; the copy counts against the budget); 0 = th
 +    return h;
 +}
 +
-+/* Round 49: LD_VTX_CACHE_FULL=1 (default) validates a hit with a full compare of its sources against the copy kept
-+ * at the fill (a PPU ring rewritten outside the sampled bytes drew stale quads in level 2, round 48); 0 = the
-+ * sampled hash of round 47. */
++/* An earlier test pass: LD_VTX_CACHE_FULL=1 (default) validates a hit with a full compare of its sources against the copy kept
++ * at the fill (a PPU ring rewritten outside the sampled bytes drew stale quads in level 2, an earlier test pass); 0 = the
++ * sampled hash of an earlier test pass. */
 +static int ld_vc_full(void)
 +{
 +    static int f = -1;
@@ -178,7 +178,7 @@ the fill (spans merged per location; the copy counts against the budget); 0 = th
 +    return f;
 +}
 +
-+/* Round 49: e->cmp = e->spans merged per location (sorted; overlapping or < 256 bytes apart joined): interleaved
++/* An earlier test pass: e->cmp = e->spans merged per location (sorted; overlapping or < 256 bytes apart joined): interleaved
 + * attributes of one buffer share one compare. */
 +static void ld_vc_merge(ld_vc_entry* e)
 +{
@@ -241,7 +241,7 @@ the fill (spans merged per location; the copy counts against the budget); 0 = th
 +        for (u32 i = 0; i < e->n_spans && !bad; i++)
 +            if (ld_vc_span_written(&e->spans[i], e->frame)) bad = 1;
 +        if (bad) { g_vc_st.inval_tracked++; if (e->dyn < 2) e->dyn++; ld_vc_drop(e); }
-+        else if (ld_vc_full()) {   /* round 49: the whole source, byte for byte */
++        else if (ld_vc_full()) {   /* an earlier test pass: the whole source, byte for byte */
 +            const u8* c = e->src;
 +            for (u32 i = 0; i < e->n_cmp && !bad; i++) {
 +                const u8* p = guest_ptr(e->cmp[i].loc, e->cmp[i].off, e->cmp[i].len);
@@ -265,7 +265,7 @@ the fill (spans merged per location; the copy counts against the budget); 0 = th
 +/* Walker, after a fetch whose key went to `e`: the source spans, or 0 when one is not cacheable. */
 +static int ld_vc_spans(ld_vc_entry* e)
 +{
-+    static int main_ok = -1;   /* round 49: read once */
++    static int main_ok = -1;   /* an earlier test pass: read once */
 +    if (main_ok < 0) main_ok = getenv("LD_VTX_CACHE_MAIN") != NULL;
 +    u32 ns = 0;
 +    if (dc.n_idx) {
@@ -345,7 +345,7 @@ the fill (spans merged per location; the copy counts against the budget); 0 = th
 +    if (ld_vc_full()) { ld_vc_merge(e); for (u32 i = 0; i < e->n_cmp; i++) src_bytes += e->cmp[i].len; }
 +    if (g_vc_bytes + vb_bytes + ib_bytes + src_bytes > ld_vc_budget()) { g_vc_st.full++; free(buf); return; }
 +    ld_vc_drop(e);
-+    if (ld_vc_full()) {   /* round 49: the source copy for the full compare */
++    if (ld_vc_full()) {   /* an earlier test pass: the source copy for the full compare */
 +        u8* src = (u8*)malloc((size_t)src_bytes + 1u);
 +        if (!src) { free(buf); return; }
 +        u8* c = src;

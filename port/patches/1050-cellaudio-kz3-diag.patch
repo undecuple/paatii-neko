@@ -6,7 +6,7 @@ KZ3 patch 1050 (pass 35): KZ3_AUDIO_DIAG=1 mix diagnostics (holes per port with 
      return f;
  }
  
-+/* KZ3 patch 1050 (spu round 35): KZ3_AUDIO_DIAG=1 mix diagnostics for the in-level dropouts (round 34: whole
++/* KZ3 patch 1050: KZ3_AUDIO_DIAG=1 mix diagnostics for the in-level dropouts (an earlier test pass: whole
 + * 256-frame holes, clipping, the mixer drifting behind real time). Per running port, a block that is all zero at
 + * read_index while the port runs is a hole (the producer did not fill it in time); the first 24 and then every
 + * 64th print [audio-hole] with the ring occupancy, how many filled blocks sit AHEAD of the cursor (a phase error if

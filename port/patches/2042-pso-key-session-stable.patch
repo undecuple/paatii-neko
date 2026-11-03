@@ -77,7 +77,7 @@ diff --git a/libs/video/rsx_live_draw.c b/libs/video/rsx_live_draw.c
 +/* Patch 2042: which channels a TEXTURE_ADDRESS gamma field [23:20] decodes, as the R/G/B mask
 + * rsx_fp_apply_gamma takes (bit 0 R, 1 G, 2 B). LD_GAMMA_ORDER=rgb (the patch 2009 reading: field
 + * bit 0 = R, 1 = G, 2 = B) or argb (field bit 0 = A, 1 = R, 2 = G, 3 = B; A is not decoded).
-+ * ASSUMPTION until the A/B against RPCS3 decides; see re-notes-rsx.md round 42. */
++ * ASSUMPTION until the A/B against RPCS3 decides; see the RE notes. */
 +static int ld_gamma_order_argb(void)
 +{
 +    static int v = -1;
@@ -101,7 +101,7 @@ diff --git a/libs/video/rsx_live_draw.c b/libs/video/rsx_live_draw.c
 +    /* Patch 2042: per-unit texture state enters the key and the HLSL only for the units this program samples.
 +     * Before, cube/gamma/shadow/ARGB/unnormalised state left bound on unused units made new keys and new HLSL
 +     * (one level session: 1,281 PSOs from 248 programs, 869 pixel-shader sources), so keys and shader blobs
-+     * from an earlier session rarely matched (release round 17: 54 of 4,933 stored keys used).
++     * from an earlier session rarely matched (an earlier test pass: 54 of 4,933 stored keys used).
 +     * LD_PSO_ALL_UNITS=1 restores the old key (all units). */
 +    static int all_units = -1;
 +    if (all_units < 0) { const char* e = getenv("LD_PSO_ALL_UNITS"); all_units = (e && e[0] == '1') ? 1 : 0;
@@ -168,7 +168,7 @@ diff --git a/libs/video/rsx_live_draw.c b/libs/video/rsx_live_draw.c
          if (pso) ld_pl_record(key, &rs, masked_layout, packed_payload, g.depth != NULL);   /* patch 2031 */
 +        /* Patch 2042 (diagnostic): LD_PSO_KEYLOG=<file> writes one line per PSO built this session with
 +         * the key's components and the HLSL hashes, so two sessions' lines show which component
-+         * keeps the keys from repeating (release round 17: 54 of 4,933 stored keys used). */
++         * keeps the keys from repeating (an earlier test pass: 54 of 4,933 stored keys used). */
 +        { static FILE* kf = (FILE*)-1;
 +          if (kf == (FILE*)-1) { const char* e = getenv("LD_PSO_KEYLOG"); kf = (e && *e) ? fopen(e, "w") : NULL; }
 +          if (kf) {

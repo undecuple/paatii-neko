@@ -1,4 +1,4 @@
-# Toro Lets Party port: from Killzone 2 bffa40a port/kz2/CMakeLists.txt. Killzone 2 port. From KZ3 78bf574 port/kz3/CMakeLists.txt, KZ3-only parts removed (PSARC VFS, KZ3 HLE glue,
+# Toro Lets Party port: from an earlier port by the same author (names swapped). From KZ3 78bf574 port/kz3/CMakeLists.txt, KZ3-only parts removed (PSARC VFS, KZ3 HLE glue,
 # logger, port/spu and port/net subprojects).
 # Killzone 3 port host. Based on ps3recomp templates/project (MIT licence: third_party/ps3recomp/LICENSE).
 # Lifted code: work/recomp (tools/lift.sh, not committed). Toolkit: third_party/ps3recomp (pinned).
@@ -218,8 +218,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ps3recomp_runtime
 )
 
-# Toro Lets Party: no lifted SPU images yet (KZ3's port/spu subproject), no file logger (KZ3 ) and no online
-# setup (KZ3 port/net); add them here when the port has its own.
+# Toro Lets Party: SPU images are lifted by tools/spu/lift_spu.sh and picked up from work/spu/lift (TLP_SPU=0 skips
+# them); no file logger and no online setup yet.
 
 
 # The runtime is C++, and on Apple also Objective-C. Letting CMake infer the

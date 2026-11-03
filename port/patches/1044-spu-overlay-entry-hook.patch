@@ -6,7 +6,7 @@
  int g_spu_ovl_skip_any = 0;
 -static uint8_t s_ovl_skip[KZ3_OVL_SKIP_MAX];
 +static uint8_t s_ovl_skip[KZ3_OVL_SKIP_MAX];   /* 0 off, 1 return at entry, 2 ask the entry hook (patch 1044) */
-+/* KZ3 patch 1044 (spu round 31): an entry hook in place of the plain skip. It runs at the same point (the job
++/* KZ3 patch 1044: an entry hook in place of the plain skip. It runs at the same point (the job
 + * manager's call of the module entry; ctx->gpr[3] = the job context, LS[ctx+0x20] = the job's parameters) and
 + * may edit the local store before the module runs; it returns 1 to skip the module after all, 0 to let it run
 + * (e.g. with a zeroed work count the module takes its own "nothing to do" path and still signals completion,

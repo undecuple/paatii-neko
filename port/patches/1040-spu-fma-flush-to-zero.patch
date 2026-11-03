@@ -13,14 +13,14 @@
   * A lane outside the rule (float subnormal/overflow range, NaN/inf, a rounding midpoint) runs all four
   * lanes through spu__fmaf as before. KZ3_SPU_FASTCG=0 keeps the old per-lane path. */
  #if defined(__SSE4_1__) && !defined(__FMA__)
-+/* KZ3 patch 1040 (spu round 28): SPU single-precision flush-to-zero for fma/fms/fnms results.
++/* KZ3 patch 1040: SPU single-precision flush-to-zero for fma/fms/fnms results.
 + * g_kz3_spu_slowcg == 0 (KZ3_SPU_FASTCG >= 1040, the default; 2 = the 1038 fast paths without FTZ, 1 = the old
 + * paths; one variable, so each op still loads one flag): a result that would be a float subnormal is +-0 with the
-+ * sign of the IEEE result. ASSUMPTION (not confirmed from ISA text available in this repo; re-notes-spu.md
++ * sign of the IEEE result. ASSUMPTION (not confirmed from ISA text available in this repo; the RE notes
 + * "Known deviations" records the SPU single-precision unit as flushing denormals): this matches the SPU, so the
 + * change only moves results that were IEEE-subnormal on the host towards the hardware's. Why: a decaying IIR tail
 + * (silence through a filter or reverb) stays at a non-zero subnormal fixed point under IEEE rounding (e.g.
-+ * y = 0.99 * y keeps 2^-149 forever), and each such lane sent the whole vector to libm fmaf (spu round 27:
++ * y = 0.99 * y keeps 2^-149 forever), and each such lane sent the whole vector to libm fmaf (an earlier test pass:
 + * 2,608 samples left in fmaf). Inputs are not flushed (DAZ); a subnormal input only changes a non-tiny result
 + * in its last bit at most. One |s| value (2^-126 - 2^-150, where the double sum's own rounding could decide
 + * between FLT_MIN and a subnormal) still takes the exact path.
@@ -115,7 +115,7 @@
  {
      const char* e = getenv("KZ3_SPU_FASTCG");
 @@ -24,6 +51,8 @@
-     if (e && *e == '1' && !e[1]) g_kz3_spu_fastcg_level = 1 << 30;   /* "1" = on (round-27 runs used 0/1) */
+     if (e && *e == '1' && !e[1]) g_kz3_spu_fastcg_level = 1 << 30;   /* "1" = on (earlier runs used 0/1) */
      g_kz3_spu_slowcg = g_kz3_spu_fastcg_level < 1038;
      g_kz3_spu_fastdisp = g_kz3_spu_fastcg_level >= 1039;
 +    if (!g_kz3_spu_slowcg && g_kz3_spu_fastcg_level < 1040) g_kz3_spu_slowcg = 2;   /* 1038 paths without FTZ */

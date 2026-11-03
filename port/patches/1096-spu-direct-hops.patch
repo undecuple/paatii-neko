@@ -40,10 +40,10 @@ Needs a relift (tools/spu/lift_spu.sh). Upstream candidate.
      spu_drain_call_full(ctx, return_pc);
  }
 +
-+/* KZ3 patch 1096 (spu round 71): direct hops between lifted functions. A cross-function transfer used to set the
++/* KZ3 patch 1096: direct hops between lifted functions. A cross-function transfer used to set the
 + * pending trampoline and return to the enclosing drain loop, which ran its per-hop hooks and called the target
 + * (indirect transfers: the full resolver spu_indirect_branch, then spu_lookup over every image registered at that
-+ * LS address). In the audio mixer jobs that round trip was ~20 % of the SPU thread (re-notes-spu Round 70/71).
++ * LS address). In the audio mixer jobs that round trip was ~20 % of the SPU thread (the RE notes An earlier test pass/71).
 + * With a guaranteed tail call (clang, GCC >= 15 musttail) the lifted code now jumps to the target itself whenever
 + * the drain's hooks would do nothing but bookkeeping: no lockstep, no launch diagnostics, no stack-reset entry
 + * that could match, no pending enabled interrupt. It then does the same bookkeeping (recent-pc ring, step count,

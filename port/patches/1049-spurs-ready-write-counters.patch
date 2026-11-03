@@ -6,7 +6,7 @@ KZ3 patch 1049 (pass 35): count the cellSpursReadyCountStore/Swap/CompareAndSwap
  #define KZ3_KT_MAX 8
  static volatile u32 s_run_wid[MAX_SPURS_INST][KZ3_KT_MAX];
  static volatile u64 s_run_t0[MAX_SPURS_INST][KZ3_KT_MAX], s_run_rep[MAX_SPURS_INST][KZ3_KT_MAX];
-+/* KZ3 patch 1049 (spu round 35): how often the three ReadyCount imports are called per wid and how often the
++/* KZ3 patch 1049: how often the three ReadyCount imports are called per wid and how often the
 + * instance byte actually changes (patch 1045's witness: the POKE scan is consumed by the dispatch loop first).
 + * [0] = Store, [1] = Swap, [2] = CompareAndSwap; printed by the watcher every 10 s as [spurs-ready]. */
 +static volatile long s_kz3_ready_calls[3][CELL_SPURS_MAX_WORKLOAD], s_kz3_ready_chg[3][CELL_SPURS_MAX_WORKLOAD];

@@ -40,7 +40,7 @@ RSX_PACE=0 turns it off (default on).
 --- /dev/null
 +++ b/libs/video/rsx_pace.h
 @@ -0,0 +1,103 @@
-+/* KZ3 patch 2072 (rsx round 68): frame-pacing metric. Pure C, no OS calls, so tools/smoke/test_pace.sh builds it
++/* KZ3 patch 2072: frame-pacing metric. Pure C, no OS calls, so tools/smoke/test_pace.sh builds it
 + * on the host. The caller passes a monotonic time in milliseconds (QueryPerformanceCounter in rsx_live_draw.c).
 + *
 + * Every successful Present records the interval since the previous one into a fixed histogram (0.25 ms buckets

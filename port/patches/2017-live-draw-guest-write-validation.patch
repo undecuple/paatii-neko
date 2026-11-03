@@ -614,7 +614,7 @@ index b4966c6..92c488c 100644
      u32 marked = 0;
 @@ -9636,6 +10059,52 @@ int rsx_live_draw_debug_read_surface(u32 location, u32 offset, void* out,
   * target (local 0x1300000) to main memory with one NV0039 copy per frame
-  * (RPCS3 capture, round 18); live-draw never writes surfaces to guest memory,
+  * (RPCS3 capture, an earlier test pass); live-draw never writes surfaces to guest memory,
   * so the copy moved stale VRAM. LD_NV0039_WRITEBACK=0 disables. */
 +/* Write live colour surface i back into guest memory in the RSX layout
 + * (blocking GPU readback). Returns 1 when written. */

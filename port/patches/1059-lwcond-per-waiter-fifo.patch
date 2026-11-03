@@ -1,4 +1,4 @@
-KZ3 patch 1059 (pass 46, queue 9l; upstream candidate; design from Killzone 2's patch 6005): sys_lwcond waiters in a per-lwcond FIFO (runtime/ppu/kz3_lwcond_fifo.h, a node on the waiter's stack woken by name): signal wakes the oldest, signal_all every waiter queued at the time, signal_to the named thread. Patch 0003's one counting semaphore per lwcond let a thread woken by signal_all re-wait and take a count meant for another waiter, which then slept on (KZ2: FIOS media-thread startup hang). Host test tools/spu/test_lwcond_fifo.sh reproduces the lost wakeup on the old algorithm and passes on the FIFO.
+KZ3 patch 1059 (pass 46, queue 9l; upstream candidate): sys_lwcond waiters in a per-lwcond FIFO (runtime/ppu/kz3_lwcond_fifo.h, a node on the waiter's stack woken by name): signal wakes the oldest, signal_all every waiter queued at the time, signal_to the named thread. Patch 0003's one counting semaphore per lwcond let a thread woken by signal_all re-wait and take a count meant for another waiter, which then slept on (a FIOS media-thread startup hang). Host test tools/spu/test_lwcond_fifo.sh reproduces the lost wakeup on the old algorithm and passes on the FIFO.
 
 --- a/runtime/ppu/ppu_sysprx.cpp
 +++ b/runtime/ppu/ppu_sysprx.cpp
@@ -108,14 +108,14 @@ KZ3 patch 1059 (pass 46, queue 9l; upstream candidate; design from Killzone 2's 
 --- /dev/null
 +++ b/runtime/ppu/kz3_lwcond_fifo.h
 @@ -0,0 +1,166 @@
-+/* KZ3 patch 1059 (upstream candidate; design from Killzone 2's patch 6005): per-waiter FIFO for sys_lwcond.
++/* KZ3 patch 1059 (upstream candidate): per-waiter FIFO for sys_lwcond.
 + *
 + * A guest lwcond wait parks the calling host thread in a FIFO node that lives on the waiter's stack; a signal
 + * marks the oldest queued node (signal), every node queued at the time (signal_all) or the named thread's node
 + * (signal_to) as woken and pulses one condition variable. lv2 wakes the threads that were queued at the time of
 + * the signal and never one that queued later. The counting semaphore that patch 0003 used instead let a thread
 + * woken by signal_all go straight back to waiting and take the count meant for another waiter, which then slept
-+ * on (Killzone 2's FIOS media-thread startup hang; the same code ran here). Platform-neutral so the host test
++ * on (a FIOS media-thread startup hang; the same code ran here). Platform-neutral so the host test
 + * tools/spu/test_lwcond_fifo.c can build it on Linux with pthreads; ppu_sysprx.cpp uses the Windows half. */
 +#ifndef KZ3_LWCOND_FIFO_H
 +#define KZ3_LWCOND_FIFO_H

@@ -45,7 +45,7 @@ diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
 +    return rc;
 +}
 +
-+/* KZ3 patch 1019: the Task2 calls Havok's hkPs3SpuUtil makes on a Taskset2 (re-data round 11).
++/* KZ3 patch 1019: the Task2 calls Havok's hkPs3SpuUtil makes on a Taskset2.
 + * CreateTask2 is CreateTask without a context save area or LS pattern (a Task2 cannot yield).
 + * JoinTask2 waits until the task's enabled bit (+0x30, cleared by spu_taskset_task_exited) drops.
 + * ASSUMPTION: the exit code is reported as 0 (the runtime does not record task exit codes yet). */

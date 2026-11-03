@@ -4,7 +4,7 @@
   * at LS 0x3000 (below it is the SPURS kernel/policy/context, 0x290..0x2FFF). */
  #define SPU_TASKSET_TASK_LO 0x3000u
  
-+/* KZ3 patch 1043 (spu round 30): skip a streamed overlay module at its entry (A/B aid for KZ3's SPU
++/* KZ3 patch 1043: skip a streamed overlay module at its entry (A/B aid for KZ3's SPU
 + * visibility culling jobs, KZ3_SPU_SKIP_OVL / KZ3_CULL_AB in the port's generated registration). When the
 + * job manager (image 2) branches into a code module whose image id is marked here, and the link register
 + * points back below the module buffer (i.e. this is the manager's call of the module's entry, not a call

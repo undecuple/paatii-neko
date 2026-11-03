@@ -6,7 +6,7 @@ KZ3 patch 1057 (pass 39): g_kz3_pm_run_hook(spurs_ea, wid, end) at the start and
  }
  
  static DWORD WINAPI spurs_kernel_thread(LPVOID p);
-+/* KZ3 patch 1057 (spu round 39): called by the kernel thread when a workload's policy-module run starts (end 0,
++/* KZ3 patch 1057: called by the kernel thread when a workload's policy-module run starts (end 0,
 + * after the contention byte is set) and ends (end 1, after it is cleared, all lanes joined); NULL = off. The
 + * port's audio probe (port/spu/kz3_audio_probe.c, KZ3_AUDIO_SPU=1) times the wid 9 job lists with it. */
 +void (*g_kz3_pm_run_hook)(u32 spurs_ea, u32 wid, int end) = 0;

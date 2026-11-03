@@ -26,8 +26,8 @@ diff --git a/runtime/spu/spu_dma.h b/runtime/spu/spu_dma.h
       * succeeds, and halt at a known pc rather than hanging silently. */
 -    { static uint32_t s_last_ea, s_last_lsa, s_rep;
 -      static uint32_t s_limit = 0;
-+    /* KZ3 patch 1065 (spu round 48): a job that re-issues the same GET is usually POLLING a word another SPU or the
-+     * PPU will change (KZ3 level 2, net round 15: wid 7's job at LS 0x1CEAC / 0x1CA50 polled one word; the halt at
++    /* KZ3 patch 1065: a job that re-issues the same GET is usually POLLING a word another SPU or the
++     * PPU will change (KZ3 level 2, an earlier test pass: wid 7's job at LS 0x1CEAC / 0x1CA50 polled one word; the halt at
 +     * 256 left its lane halted, the workload never returned and the game froze at 339 s and 538 s, 2 of 2; with the
 +     * limit out of reach both runs played 670 s). So: the counter is per context (the statics mixed every lane's
 +     * transfers), the halt is OFF unless SPU_DMA_REPEAT_LIMIT=N is set, and a long repeat is reported once per

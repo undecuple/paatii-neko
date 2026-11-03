@@ -14,7 +14,7 @@ diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
  }
  /* kz3-pm-switch end */
  
-+/* KZ3 patch 1064 (spu round 48): per wid, how many dispatches saw each ready count (0..7+) before the pass consumed
++/* KZ3 patch 1064: per wid, how many dispatches saw each ready count (0..7+) before the pass consumed
 + * one unit, and how many lanes each dispatch ran; KZ3_SPURS_LANES_READY=1 caps the lanes of a kicked dispatch at that
 + * ready count (SPURS semantics: readyCount = the number of SPUs the workload asks for, up to maxContention; the
 + * runtime ran maxContention lanes for every kick, which with the game's real HiPrio count of 5 (patch 1062) ran five
@@ -41,7 +41,7 @@ diff --git a/libs/spurs/cellSpurs.c b/libs/spurs/cellSpurs.c
 +            o ? line : " none", kz3_lanes_ready_on() ? " [KZ3_SPURS_LANES_READY]" : "");
 +}
  static DWORD WINAPI spurs_kernel_thread(LPVOID p);
- /* KZ3 patch 1057 (spu round 39): called by the kernel thread when a workload's policy-module run starts (end 0,
+ /* KZ3 patch 1057: called by the kernel thread when a workload's policy-module run starts (end 0,
   * after the contention byte is set) and ends (end 1, after it is cleared, all lanes joined); NULL = off. The
 @@ -1974,6 +2000,7 @@
                  fprintf(stderr, "[spurs-ready] t=%llus store=%ld/%ld swap=%ld/%ld cas=%ld/%ld (calls/byte changed) per wid:%s\n",

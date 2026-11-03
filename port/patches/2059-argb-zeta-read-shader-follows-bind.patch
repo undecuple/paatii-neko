@@ -22,7 +22,7 @@ aliasing rule, follows 2011/2044).
          return g.zdepths[zi].depth_format == 1 ? ZALIAS_NONE : ZALIAS_ARGB;
      return ZALIAS_SHADOW;
  }
-+/* Patch 2059 (rsx round 59): one rule for an A8R8G8B8 read of a Z24S8 zeta address, used by the texture bind
++/* Patch 2059: one rule for an A8R8G8B8 read of a Z24S8 zeta address, used by the texture bind
 + * AND the PSO. Patch 2044's rule (the zeta wins when its depth was written after the last real colour write to a
 + * colour surface at the same address, the draw's own target excluded) lived only in the bind, while get_pso
 + * tagged every such unit ZALIAS_ARGB, so the shader rebuilt depth bytes (rsx_fp_apply_depth_argb: .x taken as

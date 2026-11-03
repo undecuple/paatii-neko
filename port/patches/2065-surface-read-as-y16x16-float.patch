@@ -46,7 +46,7 @@ Y; KZ3 has no guest Y16_X16_FLOAT texture, so that path is left as it is (open i
      return (int)(SRV_ZWIN_BASE + i * LD_ZWIN_PER + k);
  }
  
-+/* Patch 2065 (KZ3 rsx round 63): an A8R8G8B8 render surface read as Y16_X16_FLOAT. KZ3's G-buffer writes the view
++/* Patch 2065 (KZ3): an A8R8G8B8 render surface read as Y16_X16_FLOAT. KZ3's G-buffer writes the view
 + * normal's two halves as the bytes of its third target (0x16C0000: UPB of r0.x, patch 2064) and every lighting
 + * pass reads that surface back as Y16_X16_FLOAT (remap 0x29E4). The RSX reinterprets the 32-bit word; live-draw
 + * bound the surface's RGBA8 UNORM view, so the lights read two byte values in [0,1] as the normal. The word is
@@ -196,7 +196,7 @@ Y; KZ3 has no guest Y16_X16_FLOAT texture, so that path is left as it is (open i
 +    return (int)(SRV_SURF_RG16_BASE + si);
 +}
 +
- /* Patch 2024 (D46 spike, diagnostic): LD_GEOM_CAPTURE=1 with LD_SURF_DUMP
+ /* Patch 2024 (spike, diagnostic): LD_GEOM_CAPTURE=1 with LD_SURF_DUMP
   * captures, in the frame after the dump fires, the guest clip-space position
   * (o[0], before the host's posscale/offset) and the host clip position (Out.pos,
 @@ -11884,6 +12042,10 @@

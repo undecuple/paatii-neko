@@ -13,7 +13,7 @@ Upstream candidate: a title cannot use Esc while the backend eats it, and an acc
      }
  
 +    /* The one keyboard -> pad table (KZ3 patch 2034 adds Esc = START, so Esc opens the pause menu in game and
-+     * acts as the game's own back/resume in menus; Enter stays START too). A key-binding file (D51) replaces
++     * acts as the game's own back/resume in menus; Enter stays START too). A key-binding file replaces
 +     * this table later. */
      static const struct { int vk; u16 btn; } map[] = {
          { VK_UP,     CELL_PAD_CTRL_UP },      { VK_DOWN,  CELL_PAD_CTRL_DOWN },

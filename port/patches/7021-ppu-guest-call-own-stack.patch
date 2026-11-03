@@ -1,0 +1,65 @@
+ppu: a host thread that runs guest callbacks can give itself its own scratch stack.
+Toro's own patch (7xxx).
+What: ppu_guest_call and ppu_guest_call_ct run a callback on a per-host-thread scratch stack that every thread set to
+the same 0xCFFE0000, safe only while one callback runs at a time. ppu_guest_call_set_stack(sp) sets the calling
+thread's stack; ppu_guest_call_alloc_stack(size) takes one from the PPU thread stack allocator (call it before the
+guest starts threads). Threads that set nothing keep 0xCFFE0000, so nothing else changes.
+Why: the port delivers the GCM vblank and flip handlers from a host interrupt thread, as the console does, instead of
+at the next HLE call a guest thread happens to make (0-3 ms late). That thread runs guest code while guest threads
+may run their own callbacks, so it needs a stack of its own.
+Tests: title screen, 25 s, same window (2026-10-27): handler 0 ms after the vblank in 606 of 613 frames (was 0-3 ms),
+26-31 fps (19 before); title drawn correctly.
+diff --git a/runtime/ppu/ppu_loader.cpp b/runtime/ppu/ppu_loader.cpp
+--- a/runtime/ppu/ppu_loader.cpp
++++ b/runtime/ppu/ppu_loader.cpp
+@@ -3985,6 +3985,24 @@ extern "C" void ppu_register_opd_fixup(uint32_t opd, uint32_t code, uint32_t toc
+         s_opd_fixups[s_opd_fixup_n].code = code; s_opd_fixups[s_opd_fixup_n].toc = toc; s_opd_fixup_n++; }
+ }
+ 
++/* The scratch stack ppu_guest_call and ppu_guest_call_ct run a callback on, per
++ * host thread. Every thread defaults to the same 0xCFFE0000, which is safe only
++ * while one callback runs at a time; a host thread that delivers callbacks while
++ * guest threads may run their own (the GCM interrupt thread) sets a stack of its
++ * own first, as the PS3's interrupt threads have theirs. */
++static PPU_THREAD_LOCAL uint32_t s_cb_stack_tls = 0;
++extern "C" void ppu_guest_call_set_stack(uint32_t sp) { s_cb_stack_tls = sp & ~0xFu; }
++static uint32_t ppu_guest_call_stack(void) { return s_cb_stack_tls ? s_cb_stack_tls : 0xCFFE0000u; }
++/* A guest stack for such a thread, from the PPU thread stack allocator (sys_ppu_thread.c). Call it before the
++ * guest starts threads (the allocator has no lock of its own outside sys_ppu_thread_create); returns the stack top,
++ * or 0 when the region is full. */
++extern "C" vm_stack_alloc g_vm_stack_alloc;
++extern "C" uint32_t ppu_guest_call_alloc_stack(uint32_t size)
++{
++    const uint32_t base = vm_stack_allocate(&g_vm_stack_alloc, size);
++    return base ? base + size : 0;
++}
++
+ extern "C" uint64_t ppu_guest_call(uint32_t opd_addr,
+                                    uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3,
+                                    uint64_t a4, uint64_t a5, uint64_t a6, uint64_t a7)
+@@ -4009,10 +4027,11 @@ extern "C" uint64_t ppu_guest_call(uint32_t opd_addr,
+                 vm_read32(opd_addr + 8), vm_read32(opd_addr + 12));
+         return 0; }
+ 
+-    /* Private scratch stack high in the guest stack region, distinct from the
+-     * main + ppu_thread stacks. One callback at a time per caller thread. */
+-    static PPU_THREAD_LOCAL uint32_t s_cb_sp = 0;
+-    if (!s_cb_sp) s_cb_sp = 0xCFFE0000u;
++    /* Private scratch stack below the guest stack region, distinct from the
++     * main + ppu_thread stacks. One callback at a time per caller thread; a
++     * host thread that runs callbacks at the same time as guest threads gives
++     * itself its own stack with ppu_guest_call_set_stack. */
++    uint32_t s_cb_sp = ppu_guest_call_stack();
+ 
+     ppu_context ctx;
+     memset(&ctx, 0, sizeof(ctx));
+@@ -4056,8 +4075,7 @@ extern "C" uint64_t ppu_guest_call_ct(uint32_t code, uint32_t toc,
+     ppu_fn fn = ppu_lookup(code);
+     if (!fn) { fprintf(stderr, "[ppu] guest_call_ct: code 0x%08X not registered\n", code); return 0; }
+ 
+-    static PPU_THREAD_LOCAL uint32_t s_cb_sp = 0;
+-    if (!s_cb_sp) s_cb_sp = 0xCFFE0000u;
++    uint32_t s_cb_sp = ppu_guest_call_stack();
+ 
+     ppu_context ctx;
+     memset(&ctx, 0, sizeof(ctx));

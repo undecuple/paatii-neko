@@ -10,7 +10,6 @@ GameUpdate
 *.gpr
 *.rep/
 __pycache__/
-.claude/settings.local.json
 .tlp-lane
 .tlp-main
 Game-JP

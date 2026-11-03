@@ -16,10 +16,10 @@ Tests: tools/spu/test_spu_xr.sh, test_spu_fastcg.sh (shufb1 vs reference), test_
      return r;
  }
 -#define SPU_XR_RET(m, r, a, b, op, imm) do { const unsigned _xm = (m); \
-+/* KZ3 patch 1082 (spu round 65): the recompute is called with vector arguments. A u128 argument (a union of integer and
++/* KZ3 patch 1082: the recompute is called with vector arguments. A u128 argument (a union of integer and
 + * float arrays) is passed in two general registers on SysV x86-64 and by a stack copy on Windows x64; the compiler
 + * built that argument on the inlined op's main path (result stored to the stack and reloaded into rdi/rsi before the
-+ * branch: 4 instructions and a store-forward per float op, re-notes-spu Round 64 s.4). __m128 arguments are already
++ * branch: 4 instructions and a store-forward per float op, the RE notes An earlier test pass s.4). __m128 arguments are already
 + * in xmm registers, so the main path keeps the result in a register; the conversion to u128 happens inside the cold
 + * function. Same lanes, same expressions (spu__xr_fix): bit-identical. */
 +#if defined(__SSE2__)
@@ -43,7 +43,7 @@ Tests: tools/spu/test_spu_xr.sh, test_spu_fastcg.sh (shufb1 vs reference), test_
  }
  #define spu_shufb_ref spu_shufb
  #endif
-+/* KZ3 patch 1082 (spu round 65): shufb with ra == rb (63 of the 66 shufb of ovl255's 0x5868 loop, 28 % of all lifted
++/* KZ3 patch 1082: shufb with ra == rb (63 of the 66 shufb of ovl255's 0x5868 loop, 28 % of all lifted
 + * shufb), emitted by spu_lifter.py for that case. Both halves of the 32-byte concat are a, so SPU source byte k is
 + * host byte (k & 15) ^ 3 of a: one pshufb on (control & 0x0F) ^ 3 (bit 7 clear, so pshufb never zeroes) instead of
 + * two pshufb and the a/b merge; the special selectors as in spu_shufb. 7 vector ops instead of 11; bit-identical to
@@ -116,10 +116,10 @@ Tests: tools/spu/test_spu_xr.sh, test_spu_fastcg.sh (shufb1 vs reference), test_
          spu_ls_write_probe_smc(ctx, lsa, p);
  }
  
-+/* KZ3 patch 1082 (spu round 65): LS accessors with the context's LS base and the debug gates taken once per lifted
++/* KZ3 patch 1082: LS accessors with the context's LS base and the debug gates taken once per lifted
 + * function. The lifted code is built with -fno-strict-aliasing, so every store (each ctx->gpr[] write, each LS
 + * store) forces the next spu_ls_read128/write128 to reload g_spu_ls_probe, ctx->ls and g_spu_ls_watch_n (and the
-+ * write's g_spu_smc_watch): ~5 instructions of every LS access in a hot loop (re-notes-spu Round 64 s.4). The
++ * write's g_spu_smc_watch): ~5 instructions of every LS access in a hot loop (the RE notes An earlier test pass s.4). The
 + * lifter (spu_lifter.py, emit_source) now opens every function that touches LS with SPU_LS_LOCALS, and the lifted
 + * source maps spu_ls_read128/write128 onto the _l forms below.
 + * Exactness: ctx->ls is set when the context is created (spu_context_init, spu_raw) and never changes while a lifted

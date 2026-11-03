@@ -177,7 +177,7 @@ index 0000000..b1648ea
 --- /dev/null
 +++ b/libs/input/pad_mouse.h
 @@ -0,0 +1,129 @@
-+/* KZ3 patch 2069: native mouse look (re-notes-gameplay.md s.12; the hook design is s.12.3).
++/* KZ3 patch 2069: native mouse look (the RE notes s.12; the hook design is s.12.3).
 + *
 + * The mouse does not move the camera from outside the frame. Raw Input counts (WM_INPUT, unaccelerated, relative)
 + * are summed here on the window thread; the game's own look update takes the sum once per call
@@ -193,7 +193,7 @@ index 0000000..b1648ea
 + * Sensitivity model from KAMI (isJuhn/KAMI, MIT): radians per count, default 0.003 (about 0.17 degrees per count).
 + *
 + * Switches (read once; pad_mouse.c):
-+ *   KZ3_MOUSE_LOOK=1        on (default off: opt-in until the owner has tried it).
++ *   KZ3_MOUSE_LOOK=1        on (default off: opt-in until tried by hand).
 + *   KZ3_MOUSE_SENS=<f>      radians per count (0.003).
 + *   KZ3_MOUSE_ZOOM_SENS=<f> extra factor while zoomed (1.0; the weapon's own factor already applies).
 + *   KZ3_MOUSE_INVERT=1      inverted Y.

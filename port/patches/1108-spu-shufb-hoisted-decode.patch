@@ -20,7 +20,7 @@ same hashes; host 144.5 -> 129.5 ns per loop iteration). Compile-time switch: -D
  #else
  static inline u128 spu_shufb1(u128 a, u128 c) { return spu_shufb(a, a, c); }
  #endif
-+/* KZ3 patch 1108 (spu round 79): shufb1 with a loop-invariant control, its decode hoisted. The lifter
++/* KZ3 patch 1108: shufb1 with a loop-invariant control, its decode hoisted. The lifter
 + * (spu_lifter.py, emit_source) finds functions with a loop, no calls and no ctx use besides gpr and LS, and for each
 + * shufb1 control register the function never writes, emits SPU_SHUFB1_DEC(n) once at entry and spu_shufb1_h(a, spu__sdN,
 + * c) at the uses (job 255's 0x5868 loop: 54 of 63 shufb1 on r11/r13/r21, none written in the function). The decode is

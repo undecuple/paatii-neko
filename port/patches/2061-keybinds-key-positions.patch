@@ -310,7 +310,7 @@ diff -ruN a/libs/input/pad_keybinds.h b/libs/input/pad_keybinds.h
 +    return n;
 +}
 +
- /* Defaults (PC layout on top of the Standard preset; ENHANCEMENT, D51). Mouse look is not wired yet, so the
+ /* Defaults (PC layout on top of the Standard preset; ENHANCEMENT). Mouse look is not wired yet, so the
   * right stick is on I/J/K/L and the numpad. */
  static void pad_kb_defaults(PadKeybinds* kb)
 @@ -227,7 +345,8 @@

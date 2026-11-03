@@ -51,7 +51,7 @@ diff --git a/runtime/ppu/ppu_loader.cpp b/runtime/ppu/ppu_loader.cpp
  
 +    /* KZ3 patch 1079: name the main PPU thread for the wait accounting (1032) and the sampler (1033,
 +     * KZ3_PROF_FILTER=ppu-main). Unnamed, it printed as host<tid> and the sampler, which attaches named threads only,
-+     * never saw it (spu round 61). */
++     * never saw it. */
 +    if (kz3_wacct_on()) kz3_wacct_name("ppu-main");
 +
      /* PS3 process-entry ABI: the loader hands _start register state the CRT
@@ -64,8 +64,8 @@ diff --git a/runtime/spu/spu_helpers.h b/runtime/spu/spu_helpers.h
  /* float result: an exponent-255 operand or result lane is recomputed */
  #define SPU_XR_FIX2(r, a, b, expr) SPU_XR_FIXM(spu__xr_mask(a) | spu__xr_mask(b) | spu__xr_mask(r), r, a, b, expr)
  
-+/* ---- KZ3 patch 1079 (spu round 62): the float ops inline, the 1071 recompute out of line ----
-+ * Round 61's level profile had spu_fm (3.2 %) and spu_fa (1.7 % of the SPU samples) as out-of-line calls: with the
++/* ---- KZ3 patch 1079: the float ops inline, the 1071 recompute out of line ----
++ * An earlier test pass's level profile had spu_fm (3.2 %) and spu_fa (1.7 % of the SPU samples) as out-of-line calls: with the
 + * 1071 lane loop in their bodies the compiler stopped inlining them into the large lifted functions. Each op below is
 + * now a forced-inline body (SSE where the host op is one instruction) plus one exponent-255 test over its operands
 + * and result (and, cmpeq, or, one movemask). A vector with such a lane goes to spu__xr_fix (cold, not inlined),
@@ -168,7 +168,7 @@ diff --git a/runtime/spu/spu_helpers.h b/runtime/spu/spu_helpers.h
 +    SPU_XR_RET(spu__xr_mask(r), r, a, a, SPU_XR_CUFLT, i8); }
 +SPU_HOT u128 spu_fm(u128 a, u128 b) { u128 r; SPU__F2(r, a, b, _mm_mul_ps, a._f32[i] * b._f32[i]); SPU_XR_RET(spu__xr_mask3(a, b, r), r, a, b, SPU_XR_FM, 0); }   /* patch 1079 */
  /* KZ3 patch 1035: fused multiply-add without the libm call. Without -mfma, fmaf is MinGW's software
-  * routine (with frexp/ldexp inside; ~3 % of the level's SPURS samples in spu round 21). The product of two
+  * routine (with frexp/ldexp inside; ~3 % of the level's SPURS samples in an earlier test pass). The product of two
   * floats is exact in double, so s = a*b + c has one double rounding; rounding s to float then equals the
 @@ -498,6 +563,42 @@ SPU_HOT float spu__fmaf(float a, float b, float c) {
   * (kz3_spu_fma_note, out of line in spu_drain.c; prints a line every 2^18 fallback vectors). */

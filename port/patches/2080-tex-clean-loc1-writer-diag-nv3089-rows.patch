@@ -254,7 +254,7 @@ the guest-copy timer starts after nv3089_engine_read, the engine write-back stil
  #define LD_TEX_CLEAN_PERIOD_DEFAULT 30u
 +/* Patch 2081: 1 (default) = location 1 only, where every writer is tracked (r74-chk: 0 misses in ~5,100 frames);
 + * location 0 keeps the 2046 rule until its writer is found (r74-chk: 6 DXT1 misses at 0:0x0FFxxxxx).
-+ * LD_TEX_CLEAN=2 = both locations (the round-74 behaviour, for testing), 0 = off. */
++ * LD_TEX_CLEAN=2 = both locations (the earlier behaviour, for testing), 0 = off. */
  static int ld_tex_clean_on(void)
  {
      static int on = -1;

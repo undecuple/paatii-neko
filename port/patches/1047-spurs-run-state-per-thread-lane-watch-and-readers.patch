@@ -8,7 +8,7 @@ KZ3 patch 1047 (pass 34, re-data 70/71): policy-module run state per (instance, 
  /* KZ3 patch 1011: the policy-module run in progress per instance (kernel thread 0). */
 -static volatile u32 s_run_wid[MAX_SPURS_INST];
 -static volatile u64 s_run_t0[MAX_SPURS_INST], s_run_rep[MAX_SPURS_INST];
-+/* KZ3 patch 1047 (spu round 34, re-data 70): run state per (instance, kernel thread), not per instance: with
++/* KZ3 patch 1047 (RE report 70): run state per (instance, kernel thread), not per instance: with
 + * several kernel threads one thread's 800 runs a second overwrote and zeroed the slot of a thread that never
 + * returned (gp-t2: spurs-kern0:HiPrio stuck in a wid-0 run from t = 411 s, never reported). s_run_join = the
 + * thread is in the lane join. kz3-spurs-runstate begin */
@@ -196,7 +196,7 @@ KZ3 patch 1047 (pass 34, re-data 70/71): policy-module run state per (instance, 
      return CELL_OK;
  }
  
-+/* KZ3 patch 1047 (spu round 34): host-side readers and a re-kick for the fiber stall report
++/* KZ3 patch 1047: host-side readers and a re-kick for the fiber stall report
 + * (port/spu/kz3_ppu_overrides.cpp). peek fills the host readyCount, the instance bytes (ready, state,
 + * current contention) and the owning instance EA; returns 1 when the workload is in use. kick is
 + * ReadyCountSwap without a guest pointer for the old value (returned). image returns the resolved

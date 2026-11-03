@@ -6,7 +6,7 @@
  static inline u128 spu_rotmhi(u128 a, int i7) { u128 r; int sh=(0-i7)&0x1F; for(int i=0;i<8;i++) r._u16[i]=(sh>15)?0:(uint16_t)(a._u16[i]>>sh); return r; }
 -static inline u128 spu_shlqbyi(u128 a, int sh) { u128 r=spu_zero(); sh&=0x1F; for(int i=0;i<16;i++){ int s=i+sh; if(s<16) r._u8[SPU_W(i)]=a._u8[SPU_W(s)]; } return r; }
 -static inline u128 spu_rotqbyi(u128 a, int sh) { u128 r; sh&=0x0F; for(int i=0;i<16;i++) r._u8[SPU_W(i)]=a._u8[SPU_W((i+sh)&0x0F)]; return r; }
-+/* KZ3 patch 1038 (spu round 27): the quadword byte shifts/rotates as one pshufb. The byte loops below
++/* KZ3 patch 1038: the quadword byte shifts/rotates as one pshufb. The byte loops below
 + * (16 iterations through memory, ~30-50 host instructions each, GCC does not vectorise them) were a generic
 + * cost of every lifted job. Result SPU byte i takes source SPU byte t = i + d (d = sh for left shifts and
 + * rotates, -sh for the rotqm right shifts); a rotate wraps t mod 16, a shift yields 0 when t leaves 0..15.
@@ -42,7 +42,7 @@
      return fmaf(a, b, c);
  #endif
  }
-+/* KZ3 patch 1038 (spu round 27): the four lanes at once in SSE4.1 double arithmetic, same rule as
++/* KZ3 patch 1038: the four lanes at once in SSE4.1 double arithmetic, same rule as
 + * spu__fmaf (one double rounding of the exact product sum, then to float), plus an exact-zero sum taken
 + * inline: a double sum of two doubles is 0 only when it is exactly 0, and the sign rule is the same as the
 + * fused one. The level profile (spu-27a) had 19 % of the audio job's (ovl260) host samples inside MinGW's

@@ -46,7 +46,7 @@ diff -ruN a/libs/input/cellPad.c b/libs/input/cellPad.c
      return pid == GetCurrentProcessId();
  }
  
-+/* KZ3 patch 2037 (D51, hook C): the keys come from a binding file instead of one fixed table, and they work
++/* KZ3 patch 2037 (hook C): the keys come from a binding file instead of one fixed table, and they work
 + * alongside an XInput pad on port 0 (buttons OR'ed, a key-held stick direction overrides that stick). The file is
 + * keybinds.ini in the player's data folder, the same folder tools/release/launch.py data_dir() picks: the install
 + * folder when kz3-install.ini (next to the exe or one level up, <root>/build/kz3.exe) says [install] portable = 1,
@@ -208,7 +208,7 @@ diff -ruN a/libs/input/cellPad.c b/libs/input/cellPad.c
      }
 -
 -    /* The one keyboard -> pad table (KZ3 patch 2034 adds Esc = START, so Esc opens the pause menu in game and
--     * acts as the game's own back/resume in menus; Enter stays START too). A key-binding file (D51) replaces
+-     * acts as the game's own back/resume in menus; Enter stays START too). A key-binding file replaces
 -     * this table later. */
 -    static const struct { int vk; u16 btn; } map[] = {
 -        { VK_UP,     CELL_PAD_CTRL_UP },      { VK_DOWN,  CELL_PAD_CTRL_DOWN },
@@ -272,7 +272,7 @@ diff -ruN a/libs/input/pad_keybinds.h b/libs/input/pad_keybinds.h
 +++ b/libs/input/pad_keybinds.h	2026-10-12 05:13:45.165628921 -0500
 @@ -0,0 +1,356 @@
 +/*
-+ * KZ3 patch 2037: keyboard/mouse -> pad bindings read from a human-readable file (D51, hook C).
++ * KZ3 patch 2037: keyboard/mouse -> pad bindings read from a human-readable file (hook C).
 + *
 + * Pure C, no platform headers: the key codes are Windows virtual-key numbers written out, so the parser, the
 + * default table and the writer build and run anywhere (host test: tools/smoke/test_pad_keybinds.sh). cellPad.c
@@ -310,7 +310,7 @@ diff -ruN a/libs/input/pad_keybinds.h b/libs/input/pad_keybinds.h
 +
 +typedef struct { const char* name; unsigned short btn; signed char dir; const char* what; } PadKbInput;
 +
-+/* The order is the file's order. `what` is the Standard preset's main use (re-notes-data-ui.md 5.3). */
++/* The order is the file's order. `what` is the Standard preset's main use (the RE notes 5.3). */
 +static const PadKbInput pad_kb_inputs[] = {
 +    { "up",       PKB_UP,       -1, "d-pad up (zoom mode)" },
 +    { "down",     PKB_DOWN,     -1, "d-pad down" },
@@ -426,7 +426,7 @@ diff -ruN a/libs/input/pad_keybinds.h b/libs/input/pad_keybinds.h
 +    return -1;
 +}
 +
-+/* Defaults (PC layout on top of the Standard preset; ENHANCEMENT, D51). Mouse look is not wired yet, so the
++/* Defaults (PC layout on top of the Standard preset; ENHANCEMENT). Mouse look is not wired yet, so the
 + * right stick is on I/J/K/L and the numpad. */
 +static void pad_kb_defaults(PadKeybinds* kb)
 +{

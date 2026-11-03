@@ -231,7 +231,7 @@ Merge tool: tools/smoke/pso_template.py; host test tools/smoke/test_pso_template
 +    return key;
 +}
 +
-+/* ===================== KZ3 patch 2071: shared pipeline template (rsx round 67) =====================
++/* ===================== KZ3 patch 2071: shared pipeline template =====================
 + * Cold-cache level starts stall the walker: every new pipeline is translated, compiled and created while the
 + * frame waits (K4: 245 pipelines, 16 s). A template (rsx_pso_template.h) lists the pipelines of an earlier session
 + * as hashes and numeric state only, no shader text and no microcode, so players can share it. At init
@@ -722,7 +722,7 @@ Merge tool: tools/smoke/pso_template.py; host test tools/smoke/test_pso_template
 -            if (g.psos[i].preloaded) { g.psos[i].preloaded = 0; g_ld_pl_used++; }
 +            if (g.psos[i].preloaded) { if (g.psos[i].preloaded == 2) g_pt.used++; g.psos[i].preloaded = 0; g_ld_pl_used++; }
              LDW_ADD(RSX_PERF_W_PSO_FIND_T, gp_t3);
-             if (g.psos[i].pending) return ld_apso_await(i);   /* rsx round 57: wait, never skip */
+             if (g.psos[i].pending) return ld_apso_await(i);   /* an earlier test pass: wait, never skip */
              return g.psos[i].pso;
 @@ -8150,69 +8697,8 @@
  #if defined(YZ_PERF_PROFILE)
@@ -823,7 +823,7 @@ Merge tool: tools/smoke/pso_template.py; host test tools/smoke/test_pso_template
 --- /dev/null
 +++ b/libs/video/rsx_pso_template.h
 @@ -0,0 +1,181 @@
-+/* KZ3 patch 2071 (rsx round 67): the shared pipeline template -- file format, record set and the guest-memory
++/* KZ3 patch 2071: the shared pipeline template -- file format, record set and the guest-memory
 + * shader finder, platform-neutral so a host test can check them with no GPU (tools/smoke/test_pso_template.c) and
 + * the merge tool (tools/smoke/pso_template.py) reads the same layout.
 + *

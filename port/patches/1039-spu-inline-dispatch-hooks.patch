@@ -5,8 +5,8 @@
  /* Central per-transfer hooks (stubbed in spu_drain.c until their milestones). */
  void yz_lockstep_tick(spu_context* ctx);             /* round-robin token gate */
 -void spu_task_launch_check(spu_context* ctx, void* fn); /* SPURS task-launch    */
-+/* KZ3 patch 1039 (spu round 28): the per-transfer and per-call hooks below run once per trampoline step and
-+ * once per lifted call (~10-12 % of the level's SPU job samples in spu round 27, all out-of-line calls into
++/* KZ3 patch 1039: the per-transfer and per-call hooks below run once per trampoline step and
++ * once per lifted call (~10-12 % of the level's SPU job samples in an earlier test pass, all out-of-line calls into
 + * functions whose work is mostly env-gated diagnostics). Their common case is now inline; the full bodies
 + * (spu_task_launch_check_full, spu_drain_call_full in spu_drain.c) run whenever a diagnostic env is set, a
 + * pm flow capture targets this context, or KZ3_SPU_FASTCG is below 1039 (then g_spu_launch_diag = 1 and
@@ -93,7 +93,7 @@
      const char* e = getenv("KZ3_SPU_FASTCG");
 -    g_kz3_spu_slowcg = (e && *e == '0') ? 1 : 0;
 +    if (e && *e >= '0' && *e <= '9') g_kz3_spu_fastcg_level = atoi(e);
-+    if (e && *e == '1' && !e[1]) g_kz3_spu_fastcg_level = 1 << 30;   /* "1" = on (round-27 runs used 0/1) */
++    if (e && *e == '1' && !e[1]) g_kz3_spu_fastcg_level = 1 << 30;   /* "1" = on (earlier runs used 0/1) */
 +    g_kz3_spu_slowcg = g_kz3_spu_fastcg_level < 1038;
 +    g_kz3_spu_fastdisp = g_kz3_spu_fastcg_level >= 1039;
 +    g_spu_launch_diag = !g_kz3_spu_fastdisp || getenv("SPU_NO_LS0_END") || getenv("SPU_EXITTRACE") ||

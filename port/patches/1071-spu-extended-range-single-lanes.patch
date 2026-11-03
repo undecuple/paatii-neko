@@ -32,12 +32,12 @@ their current results and rounding. KZ3_SPU_XR=0 keeps the host results (A/B). H
  static inline u128 spu_mpya(u128 a, u128 b, u128 c) { u128 r; for(int i=0;i<4;i++) r._s32[i]=(int32_t)a._s16[i*2]*(int32_t)b._s16[i*2]+c._s32[i]; return r; }
  /* sfx: extended subtract rb-ra-1+carry; carry-in = low bit of old rt (RT is 3rd src). */
  static inline u128 spu_sfx(u128 a, u128 b, u128 t) { u128 r; for(int i=0;i<4;i++) r._u32[i]=b._u32[i]+~a._u32[i]+(t._u32[i]&1u); return r; }
-+/* ---- KZ3 patch 1071 (spu round 56): SPU extended-range singles on the lanes the host gets wrong ----
++/* ---- KZ3 patch 1071: SPU extended-range singles on the lanes the host gets wrong ----
 + * The SPU single-precision unit is not IEEE (SPU ISA v1.2 section 9.1): biased exponent 255 is an ordinary binade
 + * (no Inf/NaN, Smax = 0x7FFFFFFF), exponent 0 is zero, results truncate and saturate at +-Smax. The host ops below
 + * read an exponent-255 word as Inf/NaN, so e.g. the normalise idiom x * fi(x, frsqest(x)) with x = 0 gives NaN here
 + * (frsqest(0) = exponent 255, fi keeps it, 0 * that = NaN) where the SPU gives 0. KZ3 met it twice: the TextureStreaming
-+ * job's NaN scores (round 55) and the animation job job_011c8080's bone matrices 0x7FF50000/0xFFF50000 (round 56, the
++ * job's NaN scores and the animation job job_011c8080's bone matrices 0x7FF50000/0xFFF50000 (an earlier test pass, the
 + * K2 Hammer camera). This patch keeps every existing fast path and its rounding, and only recomputes a lane exactly
 + * when an operand or the host result has exponent 255; the exact lane code is NoahBPeterson's from
 + * sp00nznet/ps3recomp PR #287 ("spu: hardware-exact float semantics", spu__sf_pack/split/sum, fa/fm/fma lanes, the key
@@ -167,7 +167,7 @@ their current results and rounding. KZ3_SPU_XR=0 keeps the host results (A/B). H
 +/* pshufb version: one of the hottest SPU ops (~11% of GH3's FMOD mixer task
 + * as the byte loop). SPU byte P lives at host byte SPU_W(P), i.e. the bytes
 + * of each 32-bit word reversed, so swap into SPU order, select, swap back. */
- /* KZ3 patch 1041 (spu round 28): shufb in host byte order, without the three word swaps. Result host byte h is
+ /* KZ3 patch 1041: shufb in host byte order, without the three word swaps. Result host byte h is
   * SPU byte h ^ 3, so its control is host byte h of c as it stands; SPU source byte k (k = control & 0x1F) is
   * host byte (k & 15) ^ 3 of a (k < 16) or b. t = (control & 0x1F) ^ 3 keeps bit 4 (the a/b choice):
 @@ -212,22 +323,45 @@
@@ -296,7 +296,7 @@ their current results and rounding. KZ3_SPU_XR=0 keeps the host results (A/B). H
 +    return r; }
 +static inline u128 spu_fm(u128 a, u128 b) { u128 r; for(int i=0;i<4;i++) r._f32[i]=a._f32[i]*b._f32[i]; SPU_XR_FIX2(r, a, b, spu__fm_lane(x, y)); return r; }
  /* KZ3 patch 1035: fused multiply-add without the libm call. Without -mfma, fmaf is MinGW's software
-  * routine (with frexp/ldexp inside; ~3 % of the level's SPURS samples in spu round 21). The product of two
+  * routine (with frexp/ldexp inside; ~3 % of the level's SPURS samples in an earlier test pass). The product of two
   * floats is exact in double, so s = a*b + c has one double rounding; rounding s to float then equals the
 @@ -426,6 +541,9 @@
      u128 r;

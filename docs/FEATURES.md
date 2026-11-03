@@ -10,10 +10,10 @@ PS3 features: 24 (works 8, partial 9, not yet 4, not yet verified 3). Estimated 
 | Feature | PS3 | Port | Evidence |
 |---|---|---|---|
 | Publisher and studio logos | Shown at every start | **works** | Play to the title in every test run since 2026-10-19 |
-| Title screen | 3D scene, logo and “Press button” | **partial** | Draws; its 3D background sometimes stays black. Cause found 2026-10-22 (a command-stream form the runtime did not read); the fix is being tested |
+| Title screen | 3D scene, logo and “Press button” | **partial** | Draws; its 3D background used to stay black in some runs. Two causes were fixed on 2026-10-26 (a command-stream form the runtime did not read, and the guest flip handler called too early); two long runs of the book's room scene then drew it correctly; the title needs more runs |
 | Attract movie when the title idles | Plays a movie | **not yet** | Movie playback (cellSail) is not implemented |
 | Main menu | Story, Game, Gallery, Extras, Options, with a help line | **works** | 2026-10-20 runs: the menu draws and takes input |
-| Menu labels and titles | Full-size text | **partial** | Some labels and titles are cut off (hand play 2026-10-21); a fix is being tested |
+| Menu labels and titles | Full-size text | **partial** | Game mode category labels and titles draw in full since 2026-10-26; one long label is still cut off |
 
 ## Story
 
@@ -51,7 +51,7 @@ PS3 features: 24 (works 8, partial 9, not yet 4, not yet verified 3). Estimated 
 | Feature | PS3 | Port | Evidence |
 |---|---|---|---|
 | Keyboard | - | **works** | Scripted keyboard runs; hand play 2026-10-21 |
-| Gamepad | DualShock 3 | **partial** | Pads go through SDL3; a PlayStation 4 pad has not yet been confirmed by hand |
+| Gamepad | DualShock 3 | **partial** | Pads go through SDL3; a DualShock 4 was played by hand (2026-10-21); other pads untested |
 | Motion sensor | SIXAXIS tilt and shake | **partial** | The game's sensor mode is honoured; real motion from a pad is untested |
 
 ## Sound
@@ -82,7 +82,7 @@ PS3 features: 24 (works 8, partial 9, not yet 4, not yet verified 3). Estimated 
 
 | Feature | PS3 | Port | Evidence |
 |---|---|---|---|
-| Frame rate | 30 frames per second | **partial** | About 24 to 27 in the Story mode and the first minigame, 29.8 in the book (measured 2026-10-21) |
+| Frame rate | 30 frames per second | **partial** | About 27 on the title screen, most frames at the full 30 (25 s run, 2026-10-27; 19 the day before). Story mode, book and minigame not re-measured since (earlier: 24 to 27, 29.8 in the book) |
 
 ## Only in the port
 

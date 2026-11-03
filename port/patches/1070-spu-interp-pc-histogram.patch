@@ -9,7 +9,7 @@ Diagnostic only; not an upstream candidate on its own.
  }
  
  uint32_t g_spu_interp_last_pc = 0;
-+/* KZ3 patch 1070 (spu round 55): per-pc execution counts of one interpreted run, for the calling thread only.
++/* KZ3 patch 1070: per-pc execution counts of one interpreted run, for the calling thread only.
 + * A caller sets g_spu_interp_pc_hist to an array of _n counters for pcs _lo.._lo+4*_n, runs the interpreter and
 + * clears it again (KZ3_TS_INTERP=1 uses it to see which branches the TextureStreaming job takes). NULL = off. */
 +_Thread_local uint32_t* g_spu_interp_pc_hist = 0;

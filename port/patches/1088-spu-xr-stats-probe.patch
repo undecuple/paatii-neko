@@ -9,7 +9,7 @@ summary every 2^20 lanes ([spu-xr] lines). Off by default: one load on the cold 
          fprintf(stderr, "[spu-fma] fallback vectors=%llu lanes: naninf=%llu overflow=%llu subnormal=%llu midpoint=%llu ftz=%d\n",
                  n, g_kz3_fma_fb[0], g_kz3_fma_fb[1], g_kz3_fma_fb[2], g_kz3_fma_fb[3], g_kz3_spu_slowcg == 0);
  }
-+/* KZ3 patch 1088 (spu round 67, diagnostic): KZ3_SPU_XRSTATS=1. Per recomputed lane: op and the class of each
++/* KZ3 patch 1088 (diagnostic): KZ3_SPU_XRSTATS=1. Per recomputed lane: op and the class of each
 + * operand (0 exponent 0, 1 normal, 2 0xFFFFFFFF, 3 0x7FFFFFFF, 4 other +exp255, 5 other -exp255; c only for fma),
 + * the host call site (return address of the cold function = the lifted function's code) and every exponent-255
 + * operand word. Shared tables, relaxed atomics (opt-in, perturbs the run). A summary every 2^20 lanes. */
@@ -105,7 +105,7 @@ summary every 2^20 lanes ([spu-xr] lines). Off by default: one load on the cold 
 +    g_kz3_xr_stats = getenv("KZ3_SPU_XRSTATS") && *getenv("KZ3_SPU_XRSTATS") == '1';   /* patch 1088 */
      const char* e = getenv("KZ3_SPU_FASTCG");
      if (e && *e >= '0' && *e <= '9') g_kz3_spu_fastcg_level = atoi(e);
-     if (e && *e == '1' && !e[1]) g_kz3_spu_fastcg_level = 1 << 30;   /* "1" = on (round-27 runs used 0/1) */
+     if (e && *e == '1' && !e[1]) g_kz3_spu_fastcg_level = 1 << 30;   /* "1" = on (earlier runs used 0/1) */
 --- a/runtime/spu/spu_helpers.h	2026-10-14 13:13:30.466890088 -0500
 +++ b/runtime/spu/spu_helpers.h	2026-10-14 13:13:42.608905030 -0500
 @@ -242,7 +242,13 @@
@@ -114,7 +114,7 @@ summary every 2^20 lanes ([spu-xr] lines). Off by default: one load on the cold 
  enum { SPU_XR_FA, SPU_XR_FS, SPU_XR_FM, SPU_XR_FCEQ, SPU_XR_FCGT, SPU_XR_FCMEQ, SPU_XR_FCMGT,
 -       SPU_XR_CFLTS, SPU_XR_CFLTU, SPU_XR_CSFLT, SPU_XR_CUFLT };
 +       SPU_XR_CFLTS, SPU_XR_CFLTU, SPU_XR_CSFLT, SPU_XR_CUFLT, SPU_XR_FMA };
-+/* KZ3 patch 1088 (spu round 67, diagnostic, opt-in): KZ3_SPU_XRSTATS=1 counts the exponent-255 recompute lanes by op
++/* KZ3 patch 1088 (diagnostic, opt-in): KZ3_SPU_XRSTATS=1 counts the exponent-255 recompute lanes by op
 + * and operand class, call site and word (kz3_spu_xr_note in spu_drain.c; one summary every 2^20 lanes). Off: one
 + * well-predicted load on the cold path only. */
 +extern int g_kz3_xr_stats;
@@ -141,7 +141,7 @@ summary every 2^20 lanes ([spu-xr] lines). Off by default: one load on the cold 
 +SPU_XR_COLD u128 spu__xr_fix(u128 r, u128 a, u128 b, unsigned m, int op, int imm) {
 +    return spu__xr_fix_ra(r, a, b, m, op, imm, __builtin_return_address(0));
 +}
- /* KZ3 patch 1082 (spu round 65): the recompute is called with vector arguments. A u128 argument (a union of integer and
+ /* KZ3 patch 1082: the recompute is called with vector arguments. A u128 argument (a union of integer and
   * float arrays) is passed in two general registers on SysV x86-64 and by a stack copy on Windows x64; the compiler
   * built that argument on the inlined op's main path (result stored to the stack and reloaded into rdi/rsi before the
 @@ -290,7 +300,7 @@

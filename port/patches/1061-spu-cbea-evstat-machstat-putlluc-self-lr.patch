@@ -10,7 +10,7 @@ diff --git a/runtime/spu/spu_channels.c b/runtime/spu/spu_channels.c
  
  /* Returns 1 if `cmd` is an atomic line op and was handled here, else 0. */
 +
-+/* KZ3 patch 1061 (spu round 47): three CBEA v1.01 channel semantics the runtime got wrong
++/* KZ3 patch 1061: three CBEA v1.01 channel semantics the runtime got wrong
 + * (work/coord/cbea-audit.md items 1, 2, 5), each with an off switch that restores the old
 + * behaviour for A/B runs only:
 + *   KZ3_SPU_EVSTAT_UNMASKED=1  rdch SPU_RdEventStat returns the raw pending register. Spec: the
@@ -19,7 +19,7 @@ diff --git a/runtime/spu/spu_channels.c b/runtime/spu/spu_channels.c
 + *   KZ3_SPU_MACHSTAT_IE=1      rdch SPU_RdMachStat bit 31 = the interrupt-enable latch [CBEA s.9.8]
 + *       (upstream #289, tekulvw). OFF by default: KZ3's WWS AddJob saves it with `rdch RdMachStat;
 + *       andi 1` and re-enables interrupts on exit only when it was set, and in this port the job
-+ *       sees int_enable == 0 there (spu round 47: the level load hangs, runs spu-47-a1/a2/x2/x3;
++ *       sees int_enable == 0 there (an earlier test pass: the level load hangs, runs spu-47-a1/a2/x2/x3;
 + *       x1 with the old value loads), so the port's contexts lose IE somewhere hardware keeps it.
 + *       Default = the old "1 while running". KZ3_SPU_MACHSTAT_TRACE=1 prints the first reads
 + *       that see int_enable == 0 (image, pc) to find that spot.

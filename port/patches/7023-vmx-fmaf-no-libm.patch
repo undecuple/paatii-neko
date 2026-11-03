@@ -1,0 +1,51 @@
+vmx: vmaddfp and vnmsubfp without a libm call per lane.
+Toro's own patch (7xxx).
+What: a vmx_fmaf helper with the rule of KZ3 patch 1035 (spu__fmaf): the float product is exact in double, so
+one double sum rounded to float is the fused result, except on a float rounding midpoint or outside the normal
+float range, where it still calls fmaf. With -mfma it is the hardware instruction.
+Why: without -mfma, fmaf is MinGW's software routine. In Toro's room scene (run tlp-room-samp6, main thread,
+470-515 s) vmx_vmaddfp and libm fmaf were about 20 % of the main thread's busy samples, from the game's VMX
+matrix code (func_0015E668, func_00157D40).
+Tests: tools/test-vmx-fmaf.sh, 200 million inputs (random, normal-range and near-cancellation) against fmaf:
+0 differ.
+--- a/runtime/ppu/ppu_vmx.h
++++ b/runtime/ppu/ppu_vmx.h
+@@ -275,16 +275,36 @@
+ VMX_FBIN(vmx_vmaxfp, vmx_maxf(vmx_f(x), vmx_f(y)), 0)
+ VMX_FBIN(vmx_vminfp, vmx_minf(vmx_f(x), vmx_f(y)), 0)
+ 
++/* Fused multiply-add without the libm call (patch 7023, the rule of KZ3 patch 1035's spu__fmaf). Without -mfma,
++ * fmaf is MinGW's software routine, and vmaddfp/vnmsubfp called it once per lane: in Toro's room scene libm fmaf
++ * and vmx_vmaddfp were about a fifth of the main thread's busy samples. The product of two floats is exact in
++ * double, so s = x*z + y has one double rounding; rounding s to float then equals the correctly rounded fused
++ * result unless s sits exactly on a float rounding midpoint (low 29 bits 0x10000000) or outside the normal float
++ * range (zero, subnormal, overflow, inf, NaN): those rare cases still call fmaf, so every lane is bit-identical
++ * to the old path.
++ * ASSUMPTION: the host rounding mode is round-to-nearest (nothing in the runtime changes MXCSR). */
++VMX_INL float vmx_fmaf(float x, float z, float y) {
++#if defined(__FMA__)
++    return __builtin_fmaf(x, z, y);
++#else
++    const double s = (double)x * (double)z + (double)y;
++    uint64_t u; memcpy(&u, &s, sizeof u);
++    const uint32_t e = (uint32_t)(u >> 52) & 0x7FFu;
++    if (__builtin_expect((u & 0x1FFFFFFFull) != 0x10000000ull && e - (1023u - 126u) < 254u, 1))
++        return (float)s;
++    return fmaf(x, z, y);
++#endif
++}
+ VMX_INL void vmx_vmaddfp(VMX_D, VMX_A, VMX_B, VMX_C, uint32_t vscr) { VMX_ARGS_PREP; const uint8_t* c = (const uint8_t*)c_;
+     for (int i = 0; i < 4; i++) {
+         float x = vmx_f(vmx_flush(vmx_w(a, i), vscr)), y = vmx_f(vmx_flush(vmx_w(b, i), vscr)),
+               z = vmx_f(vmx_flush(vmx_w(c, i), vscr));
+-        vmx_sw(r, i, vmx_flush(vmx_fix(vmx_u(fmaf(x, z, y))), vscr)); } VMX_OUT; }
++        vmx_sw(r, i, vmx_flush(vmx_fix(vmx_u(vmx_fmaf(x, z, y))), vscr)); } VMX_OUT; }
+ VMX_INL void vmx_vnmsubfp(VMX_D, VMX_A, VMX_B, VMX_C, uint32_t vscr) { VMX_ARGS_PREP; const uint8_t* c = (const uint8_t*)c_;
+     for (int i = 0; i < 4; i++) {
+         float x = vmx_f(vmx_flush(vmx_w(a, i), vscr)), y = vmx_f(vmx_flush(vmx_w(b, i), vscr)),
+               z = vmx_f(vmx_flush(vmx_w(c, i), vscr));
+-        vmx_sw(r, i, vmx_flush(vmx_fix(vmx_u(-fmaf(x, z, -y))), vscr)); } VMX_OUT; }
++        vmx_sw(r, i, vmx_flush(vmx_fix(vmx_u(-vmx_fmaf(x, z, -y))), vscr)); } VMX_OUT; }
+ 
+ #define VMX_FUN(name, expr, flush_in, nanmode) \
+ VMX_INL void name(VMX_D, VMX_B, uint32_t vscr) { const uint8_t* b = (const uint8_t*)b_; uint8_t r[16]; \

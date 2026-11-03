@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Toro Lets Party: from Killzone 2 bffa40a tools/build-kz2.sh (names swapped).
+# Toro Lets Party: from an earlier port by the same author (names swapped).
 # Memory-safe Windows build of port/tlp, one build at a time on the machine shared with the Killzone 3 port.
 # From KZ3 78bf574 tools/build-kz3.sh (KZ3_* -> TLP_*; configures the build dir itself when it has no CMakeCache.txt;
 # no SPU registration step yet). Run inside the sandbox:

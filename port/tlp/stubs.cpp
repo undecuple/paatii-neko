@@ -1,6 +1,8 @@
-/* Toro Lets Party port: from Killzone 2 bffa40a port/kz2 (names swapped, KZ2-only parts removed). */
-/* Toro Lets Party port host. From KZ3 78bf574 port/kz3/stubs.cpp, itself ps3recomp templates/project/stubs.cpp (MIT
- * licence: third_party/ps3recomp/LICENSE). Unchanged apart from this header. */
+/* Toro Lets Party port: adapted from an earlier PS3 port by the same author (names swapped, parts specific to that
+ * game removed). */
+/* Toro Lets Party port host. From KZ3 78bf574 port/kz3/stubs.cpp (KZ3 is the author's unreleased
+ * earlier port), itself ps3recomp templates/project/stubs.cpp (MIT licence: third_party/ps3recomp/LICENSE). Unchanged
+ * apart from this header. */
 /*
  * ps3recomp game project -- game-specific hooks and overrides.
  *

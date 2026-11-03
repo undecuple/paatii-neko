@@ -13,7 +13,7 @@ index 5235d89..ee8ab00 100644
              fprintf(file, "bb=%.0f,%.0f-%.0f,%.0f ", x0, y0, x1, y1);
          }
      }
-+    /* LD_CSV_VALUES=1 (round 21 probe): attr 0 format, the first three vertices' attr 0 and
++    /* LD_CSV_VALUES=1 (an earlier probe): attr 0 format, the first three vertices' attr 0 and
 +     * c0..c3 as a row-vector transform (o = v.x*c0 + v.y*c1 + v.z*c2 + v.w*c3, the KZ3
 +     * G-buffer VP pattern) so missing geometry can be told apart from culled/clipped geometry. */
 +    { static int cv = -1; if (cv < 0) cv = getenv("LD_CSV_VALUES") ? 1 : 0;

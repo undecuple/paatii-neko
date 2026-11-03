@@ -27,13 +27,14 @@ from the developer's own copy of the game.
 ## Licence
 
 The port's own code, tools and documentation are MIT ([LICENSE](LICENSE)). The licence covers nothing of the game
-itself. Third-party parts keep their own terms.
+itself. Third-party parts keep their own terms; their full licence texts are in [licenses/](licenses/README.md).
 
 | Component | Use | Licence |
 |---|---|---|
 | [ps3recomp](https://github.com/sp00nznet/ps3recomp) | PPU/SPU recompiler and PS3 runtime (submodule `third_party/ps3recomp`; our changes are the patches in `port/patches/`) | MIT |
-| [Lilita One](https://fonts.google.com/specimen/Lilita+One), [Baloo 2](https://fonts.google.com/specimen/Baloo+2), [M PLUS Rounded 1c](https://fonts.google.com/specimen/M+PLUS+Rounded+1c) | rendered into the README banner and the social preview (`docs/assets/`, drawn by `tools/release/repo_art.py` from shapes and text); the font files are not in this repository and nothing ships them | SIL Open Font License 1.1 |
+| [Lilita One](https://fonts.google.com/specimen/Lilita+One), [Baloo 2](https://fonts.google.com/specimen/Baloo+2), [M PLUS Rounded 1c](https://fonts.google.com/specimen/M+PLUS+Rounded+1c) | rendered into the README banner and the social preview (`docs/assets/`, drawn from shapes and text by a maintainer-side script that is not part of this repository); the font files are not in this repository and nothing ships them | SIL Open Font License 1.1 |
 | [SDL3](https://libsdl.org) | pads, motion sensors and rumble: `SDL3.dll` is loaded from the exe's folder, staged with its licence text by `tools/release/stage_sdl3.py`; not in this repository | zlib |
+| GCC 16.2.0 runtime (libgcc, libstdc++), [MinGW-w64](https://www.mingw-w64.org) 14.0.0, [MCF Gthread](https://github.com/lhmouse/mcfgthread) 2.4.2 | linked statically into the exe by the build toolchain | GPL-3.0 with the GCC Runtime Library Exception; ZPL-2.1 and public domain; LGPL-3.0+ with the same exception |
 | [RPCS3](https://github.com/RPCS3/rpcs3) | reference for PS3 behaviour and data layouts, read only; no RPCS3 code is included | GPL-2.0, not used as code |
 
 The port's patch series started from the Killzone 3 port by the same author and carries the credits that series
@@ -69,6 +70,8 @@ author's sister ports. Each patch header names its source.
   integer half exports.
 - **kalpakprod:** [PR #349](https://github.com/sp00nznet/ps3recomp/pull/349) (patch 9349): the correct
   `CELL_FS_O_*` open-flag values, so `O_CREAT` creates.
+- **n0madic:** [PR #485](https://github.com/sp00nznet/ps3recomp/pull/485) (patch 7019): vertex-program branches on
+  the transform branch bits (BRB/CLB), baked into the shader and the pipeline key.
 - **robbe1912:** [robbe1912/ps3recomp](https://github.com/robbe1912/ps3recomp) (patch 2057, from the MotorStorm:
   Monument Valley port): the fragment decoder's third-source absolute modifier.
 

@@ -54,12 +54,12 @@ Measured in pass 55 (K4 level): draw GPU time 65 -> 35 ms/frame but the copy lis
 + * DEFAULT-heap mirror (same offsets), and every submit first executes a small copy list that copies the byte
 + * range the list's draws used (min..max offset per list) from the upload ring into the mirror. A draw whose
 + * range does not fit the mirror (LD_VB_DEVICE_MB, default 128 / index 32) keeps reading the upload ring.
-+ * Default OFF (LD_VB_DEVICE=1 enables): round 55 measured the copy list costing as much as the draws saved. The mirrors sit in COMMON between lists; the copy list
++ * Default OFF (LD_VB_DEVICE=1 enables): an earlier test pass measured the copy list costing as much as the draws saved. The mirrors sit in COMMON between lists; the copy list
 + * moves them COMMON -> COPY_DEST -> COMMON, draws promote them implicitly. */
 +static int ld_vbd_on(void)
 +{
 +    static int on = -1;
-+    if (on < 0) { const char* e = getenv("LD_VB_DEVICE"); on = e && e[0] == '1'; }   /* default off: round 55 measured no gain */
++    if (on < 0) { const char* e = getenv("LD_VB_DEVICE"); on = e && e[0] == '1'; }   /* default off: an earlier test pass measured no gain */
 +    return on;
 +}
 +static ID3D12Resource* ld_vbd_make(u64 bytes)

@@ -18,7 +18,7 @@ mode with FTZ/DAZ on and off. Compile-time switch: -DSPU_XR_RMASK=0 (C flags) = 
  #endif
 -SPU_HOT u128 spu_fa(u128 a, u128 b) { u128 r; SPU__F2(r, a, b, _mm_add_ps, a._f32[i] + b._f32[i]); SPU_XR_RET_Q(spu__xr_mask3(a, b, r), r, a, b, SPU_XR_FA); }
 -SPU_HOT u128 spu_fs(u128 a, u128 b) { u128 r; SPU__F2(r, a, b, _mm_sub_ps, a._f32[i] - b._f32[i]); SPU_XR_RET_Q(spu__xr_mask3(a, b, r), r, a, b, SPU_XR_FS); }
-+/* KZ3 patch 1105 (spu round 78): the exponent-255 lanes of fa/fs/fm from the result alone. An infinity or NaN
++/* KZ3 patch 1105: the exponent-255 lanes of fa/fs/fm from the result alone. An infinity or NaN
 + * operand gives an infinity or NaN result in every MXCSR mode (rounding, FTZ, DAZ), so the result's mask equals
 + * spu__xr_mask3(a, b, r); same lanes, same recompute (tools/spu/test_spu_rmask.sh). -DSPU_XR_RMASK=0 = old. */
 +#ifndef SPU_XR_RMASK
@@ -43,4 +43,4 @@ mode with FTZ/DAZ on and off. Compile-time switch: -DSPU_XR_RMASK=0 (C flags) = 
 -SPU_HOT u128 spu_fm(u128 a, u128 b) { u128 r; SPU__F2(r, a, b, _mm_mul_ps, a._f32[i] * b._f32[i]); SPU_XR_RET_Q(spu__xr_mask3(a, b, r), r, a, b, SPU_XR_FM); }   /* patch 1079 */
 +SPU_HOT u128 spu_fm(u128 a, u128 b) { u128 r; SPU__F2(r, a, b, _mm_mul_ps, a._f32[i] * b._f32[i]); SPU_XR_RET_Q(SPU__XRM_AR(a, b, r), r, a, b, SPU_XR_FM); }   /* patch 1079 */
  /* KZ3 patch 1035: fused multiply-add without the libm call. Without -mfma, fmaf is MinGW's software
-  * routine (with frexp/ldexp inside; ~3 % of the level's SPURS samples in spu round 21). The product of two
+  * routine (with frexp/ldexp inside; ~3 % of the level's SPURS samples in an earlier test pass). The product of two

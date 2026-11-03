@@ -91,7 +91,7 @@ diff --git a/runtime/spu/spu_context.h b/runtime/spu/spu_context.h
  #include <stdio.h>
  #include <stdlib.h>
  
-+/* KZ3 patch 1099 (spu round 73): lifted SPU functions use the System V calling convention on Win64. The Microsoft
++/* KZ3 patch 1099: lifted SPU functions use the System V calling convention on Win64. The Microsoft
 + * x64 convention makes xmm6-xmm15, rsi and rdi callee-saved, so every lifted function that uses them saved and
 + * restored up to ten xmm registers on each entry and exit, and direct hops (patch 1096) between lifted functions
 + * enter and leave one function per SPU transfer (spu_func_0000D100 of the audio mixer job: 10 xmm stores and loads
@@ -114,7 +114,7 @@ diff --git a/runtime/spu/spu_context.h b/runtime/spu/spu_context.h
 +#endif
 +/* GCC emits no Win64 unwind data (.pdata/.xdata) for sysv_abi functions, and MinGW's setjmp() records its frame
 + * so that longjmp unwinds the stack through RtlUnwindEx, which cannot walk a lifted frame without that data (spu
-+ * round 73: the K2 audio policy module stalled at its first halt longjmp). The SPU runtime's halt and stack-reset
++ * an earlier test pass: the K2 audio policy module stalled at its first halt longjmp). The SPU runtime's halt and stack-reset
 + * jumps run no unwind handlers, so they use the frameless form (_setjmp(buf, NULL): longjmp only restores the
 + * saved registers). */
 +#if SPU_SYSV_ABI && defined(_WIN64) && defined(__MINGW64__)
@@ -140,7 +140,7 @@ diff --git a/runtime/spu/spu_context.h b/runtime/spu/spu_context.h
  #if defined(_MSC_VER)
  #include <stdlib.h>
 +
-+/* KZ3 patch 1099 (spu round 73): lifted SPU functions use the System V calling convention on Win64. The Microsoft
++/* KZ3 patch 1099: lifted SPU functions use the System V calling convention on Win64. The Microsoft
 + * x64 convention makes xmm6-xmm15, rsi and rdi callee-saved, so every lifted function that uses them saved and
 + * restored up to ten xmm registers on each entry and exit, and direct hops (patch 1096) between lifted functions
 + * enter and leave one function per SPU transfer (spu_func_0000D100 of the audio mixer job: 10 xmm stores and loads
@@ -163,7 +163,7 @@ diff --git a/runtime/spu/spu_context.h b/runtime/spu/spu_context.h
 +#endif
 +/* GCC emits no Win64 unwind data (.pdata/.xdata) for sysv_abi functions, and MinGW's setjmp() records its frame
 + * so that longjmp unwinds the stack through RtlUnwindEx, which cannot walk a lifted frame without that data (spu
-+ * round 73: the K2 audio policy module stalled at its first halt longjmp). The SPU runtime's halt and stack-reset
++ * an earlier test pass: the K2 audio policy module stalled at its first halt longjmp). The SPU runtime's halt and stack-reset
 + * jumps run no unwind handlers, so they use the frameless form (_setjmp(buf, NULL): longjmp only restores the
 + * saved registers). */
 +#if SPU_SYSV_ABI && defined(_WIN64) && defined(__MINGW64__)
@@ -218,7 +218,7 @@ diff --git a/runtime/spu/spu_context.h b/runtime/spu/spu_context.h
   * any dispatch diagnostic switch (SPU_TAILRET, SPU_JOBTRACE, SPU_POLLTRACE, ...) also turns it off. */
 -typedef void (*spu_hop_fn)(spu_context*);
 +typedef void (SPU_ABI *spu_hop_fn)(spu_context*);
- /* KZ3 patch 1097 (spu round 72): a computed hop to ctx->hop_ret_pc (the innermost open bracket's return pc) returns
+ /* KZ3 patch 1097: a computed hop to ctx->hop_ret_pc (the innermost open bracket's return pc) returns
   * to the host caller with pc = the target and nothing pending. The old path set the resolver trampoline and returned;
   * the bracket's drain then saw "resolver pending, pc == its return pc" and returned before any hook (the first test
 @@ -1057,7 +1121,7 @@ extern uint64_t g_spu_task_pol_bits[16];

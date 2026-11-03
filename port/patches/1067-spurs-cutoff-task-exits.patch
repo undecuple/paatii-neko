@@ -45,8 +45,8 @@ no game run has exercised the exit yet, hence opt-in. "[ts-join] cut-off task N 
   * KZ3_JOIN_TASKSET_OLD=1 = the old behaviour; KZ3_JOIN_TASKSET_MS = the wait bound (default 1000). */
  static _Thread_local uint32_t t_task_ts, t_task_gen;
 +/* KZ3 patch 1067 (opt-in, KZ3_JOIN_CUTOFF_EXIT=1): a cut-off parked task leaves WAIT_SIGNAL and ends its host thread
-+ * instead of staying parked forever (1066: one leaked parked thread per cut-off, about 1 join in 70 in round 49-50
-+ * runs). Off by default until a game run has exercised the exit path (none of 56 joins in round 50 cut a task off). */
++ * instead of staying parked forever (1066: one leaked parked thread per cut-off, about 1 join in 70 in an earlier test pass-50
++ * runs). Off by default until a game run has exercised the exit path (none of 56 joins in an earlier test pass cut a task off). */
 +static int ts_cutoff_exit(void) { static int v = -1; if (v < 0) { const char* e = getenv("KZ3_JOIN_CUTOFF_EXIT"); v = (e && *e == '1'); } return v; }
  static int ts_join_old(void) { static int v = -1; if (v < 0) { const char* e = getenv("KZ3_JOIN_TASKSET_OLD"); v = (e && *e == '1'); } return v; }
  static int ts_find(uint32_t taskset_ea)

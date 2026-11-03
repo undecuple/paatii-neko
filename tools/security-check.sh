@@ -4,7 +4,7 @@
 #   tools/security-check.sh --all    check every tracked file (a full-tree audit; added-line checks are skipped)
 # Blocks: secrets and key patterns, PS3 keys or key/licence files, game-derived files (path, extension, contents),
 # any new binary or archive, submodule moves, new download/install commands, unpinned package installs.
-# Allowed: checkpoint screenshots under docs/checkpoints/ (CLAUDE.md: committed on purpose) and the README shots in
+# Allowed: checkpoint screenshots under docs/checkpoints/ (committed on purpose) and the README shots in
 # docs/screenshots/ (picked by the PM) and the banner/social preview in docs/assets/ (tools/release/repo_art.py).
 # SECURITY_OK=1 git commit ... overrides a block; say why in the message.
 set -uo pipefail
@@ -80,7 +80,7 @@ fi
 if (( ! ALL )); then
   dl_re='\b(curl|wget|aria2c|Invoke-WebRequest|iwr|Start-BitsTransfer|certutil[^\n]*-urlcache)\b|fetchurl|fetchFromGitHub|fetchTarball|builtins\.fetch|pip3? install|npm (i|install)|cargo install|go install|git clone|nix profile install|https?://[^ "'"'"')>]+\.(exe|msi|zip|7z|tar|gz|xz|sh|ps1|dll)\b'
   # This script is left out: its own patterns name the commands it looks for.
-  mapfile -t code_files < <(grep -vE '^(docs/|CLAUDE\.md$|README\.md$|tools/security-check\.sh$)' <<<"$files" || true)
+  mapfile -t code_files < <(grep -vE '^(docs/|[A-Z]+\.md$|tools/security-check\.sh$)' <<<"$files" || true)
   if [[ ${#code_files[@]} -gt 0 && -n "${code_files[0]}" ]]; then
     hits="$(git diff --cached -U0 -- "${code_files[@]}" 2>/dev/null | grep -E '^\+[^+]' | grep -E "$dl_re" || true)"
     [[ -n "$hits" ]] && say "new download/install/fetch lines:"$'\n'"$(sed 's/^/    /' <<<"$hits" | head -20)"

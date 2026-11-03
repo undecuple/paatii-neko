@@ -60,8 +60,8 @@ index c7c2547..8914310 100644
  static struct { struct SpursInst* si; int k; } s_kt_arg[MAX_SPURS_INST][8];
 +/* KZ3 patch 1074: the SPURS kernel as one host thread per SPU of the instance (spuNum = thread index) that runs a
 + * workload only while it is wanted (readyCount > contention, a signal, the flag), with the selection rule of
-+ * runtime/spu/spurs_kern_sched.h (ported from ps3recomp PR #213, NoahBPeterson). DEFAULT ON since spu round 60
-+ * (the round-58 boot strand was the PM argument layout, patch 1077); KZ3_SPURS_KERNEL=0 restores the
++ * runtime/spu/spurs_kern_sched.h (ported from ps3recomp PR #213, NoahBPeterson). DEFAULT ON since an earlier test pass
++ * (an earlier boot strand was the PM argument layout, patch 1077); KZ3_SPURS_KERNEL=0 restores the
 + * old poll kernel (every enabled workload on an idle cadence, maxContention lanes per run, one
 + * ready unit consumed per pass), which with the game's real 5/1 SPUs (1062) spins (spu rounds 47-48). */
 +static int kz3_kern_old(void)
@@ -101,7 +101,7 @@ index c7c2547..8914310 100644
 +        }
  }
  static DWORD WINAPI spurs_kernel_thread(LPVOID p);
- /* KZ3 patch 1057 (spu round 39): called by the kernel thread when a workload's policy-module run starts (end 0,
+ /* KZ3 patch 1057: called by the kernel thread when a workload's policy-module run starts (end 0,
 @@ -594,6 +631,14 @@ static s32 spurs_initialize_common(u32 spurs_ea, u32 nspus, const char* prefix)
      memset(vm_base + spurs_ea, 0, SPURS_INST_SIZE);
      *(vm_base + spurs_ea + SPURS_NSPUS) = (u8)si->nspus;
@@ -118,7 +118,7 @@ index c7c2547..8914310 100644
      if (!si->kernel_live) {
          si->kernel_live = 1;
 @@ -610,6 +655,8 @@ static s32 spurs_initialize_common(u32 spurs_ea, u32 nspus, const char* prefix)
-          * single poll thread. spu round 21: level 0.83 vs 0.34 flips/s with busy no-sleep (re-notes-spu). */
+          * single poll thread. an earlier test pass: level 0.83 vs 0.34 flips/s with busy no-sleep (the RE notes). */
          int n = 8;
          { const char* e = getenv("KZ3_SPURS_THREADS"); if (e) n = atoi(e); }
 +        /* KZ3 patch 1074: the per-SPU kernel has one thread per SPU (spuNum = thread index); KZ3_SPURS_THREADS
@@ -146,7 +146,7 @@ index c7c2547..8914310 100644
 +}
 +static volatile long s_kz3_ktr_run[CELL_SPURS_MAX_WORKLOAD], s_kz3_ktr_poll[CELL_SPURS_MAX_WORKLOAD];
 +/* KZ3_SPURS_IDLE_ADMIT=1 (experiment, off by default = PR #213's rule): idleSpuCount alone admits a workload on an
-+ * idle SPU (spurs_kern_sched.h). spu round 58 run spu-58-gate3: worse, the SPUs churned on wid 7 (44.8 M picks in
++ * idle SPU (spurs_kern_sched.h). an earlier test pass run spu-58-gate3: worse, the SPUs churned on wid 7 (44.8 M picks in
 + * 190 s, the "last workload" weight keeps re-picking it), 14 flips. */
 +static int kz3_idle_admits(void)
 +{
@@ -362,7 +362,7 @@ index b193820..6c27c04 100644
 --- a/runtime/spu/spu_channels.c
 +++ b/runtime/spu/spu_channels.c
 @@ -141,6 +141,9 @@ void (*g_spu_put_hook)(uint32_t ea, uint32_t size) = 0;
- /* KZ3 patch 1051 (spu round 35): called after every committed PUTLLC with the line EA (the DMA put hook above
+ /* KZ3 patch 1051: called after every committed PUTLLC with the line EA (the DMA put hook above
   * never sees atomics); the culling probe (port/spu/kz3_cull_probe.c) watches the frame's sync word with it. */
  void (*g_kz3_putllc_hook)(uint32_t ea) = 0;
 +/* KZ3 patch 1074: the per-SPU kernel's answer to selectWorkload (libs/spurs/cellSpurs.c kz3_kern_poll): (spurs ea,
@@ -391,7 +391,7 @@ index b193820..6c27c04 100644
 +                    return;
 +                }
 +            }
-             /* KZ3 patch 1058 (re-data 86): the WWS job-manager PM compares this answer with wklCurrentId (LS 0x1DC)
+             /* KZ3 patch 1058 (RE report 86): the WWS job-manager PM compares this answer with wklCurrentId (LS 0x1DC)
               * and stops after the job in flight when they differ; the old constant 0 below differed for every
               * wid != 0, so each job manager ran one job per kernel run. Answer the current id unless the port's
 diff --git a/runtime/spu/spurs_kern_sched.h b/runtime/spu/spurs_kern_sched.h
@@ -412,7 +412,7 @@ index 0000000..b9686c1
 + * A workload qualifies on SPU n when it is runnable (enabled, state 2, a module of this instance), its priority byte
 + * for SPU n (wklInfo +0x18+n) is not 0, its current contention is below maxContention, and it is wanted: signalled,
 + * the workload flag's receiver with the flag at 0, or readyCount != 0 and readyCount + idleSpuCount > contention.
-+ * idle_admits (KZ3 round 58, ASSUMPTION, see below): idleSpuCount > contention alone also qualifies, below every
++ * idle_admits (KZ3 an earlier test pass, ASSUMPTION, see below): idleSpuCount > contention alone also qualifies, below every
 + * wanted workload (no "wanted" weight bit). Nothing else ever runs: a workload nobody signalled ready keeps no SPU (the port's old kernel ran every enabled
 + * workload on an idle cadence with maxContention lanes, which with the game's real 5/1 SPUs spun 25 host threads).
 + * Weight, most significant first: wanted (signal, flag, readyCount > contention), the SPU's priority (0x10 - p), is
@@ -421,7 +421,7 @@ index 0000000..b9686c1
 +/* idle_admits: PR #213's rule (and the RPCS3 kernel it was checked against) needs readyCount != 0, idleSpuCount
 + * only adds SPUs to a workload that has a ready count. KZ3 calls cellSpursRequestIdleSpu(wid, 7) for every job
 + * manager while its kicks already ask for 8 SPUs (above maxContention 5), which would make the request a no-op; and
-+ * with readyCount-only admission its first jm_generic list strands at boot (spu round 58: the PMs drain the ready
++ * with readyCount-only admission its first jm_generic list strands at boot (an earlier test pass: the PMs drain the ready
 + * count to 0 while one job runs, the running PM is then told to switch, nothing kicks again). ASSUMPTION tested
 + * (KZ3_SPURS_IDLE_ADMIT=1): an idle SPU (no wanted workload) runs a workload that requested idle SPUs, up to that
 + * count. Run spu-58-gate3 with it: worse (14 flips), so it stays an opt-in experiment. */

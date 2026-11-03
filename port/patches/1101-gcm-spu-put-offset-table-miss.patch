@@ -19,7 +19,7 @@ so the table's answer is the right one. KZ3_GCM_PUT_FAST=0 = the old scan (same 
 -/* EA -> IO through the mapping list (range lookup; the by-ea helper is exact). */
 +/* EA -> IO through the mapping list (range lookup; the by-ea helper is exact).
 + *
-+ * KZ3 patch 1101 (spu round 74): every SPU PUT asks this (gcm_note_spu_put), and most PUTs (the audio mixer's
++ * KZ3 patch 1101: every SPU PUT asks this (gcm_note_spu_put), and most PUTs (the audio mixer's
 + * voice state and output, job data) go to memory no IO mapping covers: each of those walked all 512 slots of the
 + * list (patch 2019's size; ~2.7 % of the K2 audio synth job). Every list writer (cellGcmInit's IO region,
 + * cellGcmMapEaIoAddress(WithFlags), cellGcmMapMainMemory, the auto-map, the sys_rsx iomap) fills the 1 MB offset

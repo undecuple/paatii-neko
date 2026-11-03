@@ -1,8 +1,10 @@
-/* Toro Lets Party port: from Killzone 2 bffa40a port/kz2 (names swapped, KZ2-only parts removed). */
-/* Toro Lets Party port host. From KZ3 78bf574 port/kz3/main.cpp (itself based on ps3recomp templates/project, MIT
- * licence: third_party/ps3recomp/LICENSE), cut to the game-independent boot: KZ3's keyboard page bridge, notice
- * window, keycap prompts (patch 2039, not carried over), PSARC VFS, KZ3 HLE glue and the file logger are left out;
- * KZ3_* switches are TLP_* here. tlp_log.h is a stdio stand-in for the logger. */
+/* Toro Lets Party port: adapted from an earlier PS3 port by the same author (names swapped, parts specific to that
+ * game removed). */
+/* Toro Lets Party port host. From KZ3 78bf574 port/kz3/main.cpp (KZ3 is the author's unreleased earlier port, itself
+ * based on ps3recomp templates/project, MIT licence: third_party/ps3recomp/LICENSE), cut to the game-independent
+ * boot: KZ3's keyboard page bridge, notice window, keycap prompts (patch 2039, not carried over), PSARC VFS, KZ3 HLE
+ * glue and the file logger are left out; KZ3_* switches are TLP_* here. tlp_log.h is a stdio stand-in for the
+ * logger. */
 /*
  * ps3recomp game project -- entry point template.
  *
@@ -28,9 +30,7 @@
  * shape for that. It was copied faithfully, comments and all. If a pacing bug
  * is fixed in one of the two, look at the other.
  *
- * This builds on Windows, macOS and Linux. CI builds and runs it against the
- * boot smoke title on the last two, and compile-checks it against clang-cl on
- * the first (tools/check_ppu_scaffold.py).
+ * This builds with MinGW-w64 only (tools/build-tlp.sh); other toolchains are untested.
  */
 
 /* The lifter's generated header, which declares ppu_context and the function
@@ -114,6 +114,11 @@ void     cellGcmTickFlip(void);
 int      cellGcm_take_flip_pending(void);
 void     cellGcm_rsx_process_fifo(void);      /* drain get -> put */
 unsigned cellGcm_flip_request_count(void);
+void     ppu_gcm_pump(void);                  /* delivers pending vblank/flip/user handlers, serialized */
+
+/* Patch 7021: a host thread that runs guest callbacks gets its own scratch stack. */
+uint32_t ppu_guest_call_alloc_stack(uint32_t size);
+void     ppu_guest_call_set_stack(uint32_t sp);
 }
 
 /* ---------------------------------------------------------------------------
@@ -184,9 +189,9 @@ extern "C" unsigned ppu_boot_frames_presented(void)
 }
 
 /* ps3recomp's second D3D12 path, the live-draw engine (libs/video/rsx_live_draw.c: per-surface depth, MRT,
- * mip chains), opt-in with RSX_LIVE_DRAW=1 for the renderer probe. The null backend opens the window and the
- * engine presents into it; unset, the rsx_d3d12_backend path below is unchanged. Bring-up follows the toolkit's
- * runtime/ppu/tests/boot_main.cpp. */
+ * mip chains), on by default here (tlp_env below; set RSX_LIVE_DRAW=0 for the plain D3D12 backend). The null
+ * backend opens the window and the engine presents into it; with RSX_LIVE_DRAW=0 the rsx_d3d12_backend path below is
+ * used. Bring-up follows the toolkit's runtime/ppu/tests/boot_main.cpp. */
 extern "C" int      rsx_live_draw_enabled(void);
 extern "C" int      rsx_live_draw_init(void* hwnd, uint32_t w, uint32_t h,
                                        const uint8_t* (*guest_ptr)(void*, uint32_t, uint32_t, uint32_t), void* user);
@@ -235,7 +240,7 @@ static void tlp_rsx_present(void)
 }
 static int tlp_rsx_pump(void) { return s_rsx_live ? rsx_null_backend_pump_messages() : rsx_backend_pump(); }
 
-/* Window closed (X button, Alt+F4, a scripted WM_CLOSE such as tools/release/shaders.py's): end the
+/* Window closed (X button, Alt+F4, a scripted WM_CLOSE such as TLP_TEST_CLOSE posts): end the
  * process cleanly from the frame thread, which owns the window and the live-draw walker. Live-draw shutdown first
  * (GPU drain, PSO preload workers joined, pso_library.bin serialized), then the log is flushed and closed, then the
  * process ends with code 0. TerminateProcess rather than exit(): guest PPU/SPU threads are still running and may
@@ -269,7 +274,7 @@ static void tlp_exit_on_window_close(void)
 }
 
 /* TLP_TEST_CLOSE=<s>: after s seconds, post WM_CLOSE to every top-level window of this process, as
- * tools/release/shaders.py's close_politely does from outside (Proton test of the clean exit). */
+ * a user closing the window would (test of the clean exit). */
 static BOOL CALLBACK tlp_test_close_enum(HWND h, LPARAM n)
 {
     DWORD pid = 0;
@@ -296,6 +301,37 @@ static void present_guest_frame(void)
     InterlockedIncrement(&g_frames_presented);
 }
 
+/* The GCM interrupt thread. The console calls the vblank and flip handlers from an interrupt thread as soon as the
+ * vblank happens. The runtime otherwise delivers them at the next HLE call any guest thread makes, which came 0-3 ms
+ * after the vblank (run tlp-clock1): Toro sleeps a fixed 29.366 ms after its flip handler and has about 1.3 ms to
+ * spare in its two-vblank frame, so a late handler missed the next flip. The frame clock wakes this thread on every
+ * vblank; ppu_gcm_pump still serializes it with the HLE-boundary deliveries. TLP_GCM_IRQ=0 turns it off. */
+static HANDLE   s_gcm_irq_event = NULL;
+static uint32_t s_gcm_irq_stack = 0;
+
+static DWORD WINAPI gcm_irq_thread(LPVOID)
+{
+    tlp_log_set_thread_label("gcm-irq");
+    ppu_guest_call_set_stack(s_gcm_irq_stack - 0x100);
+    for (;;) {
+        WaitForSingleObject(s_gcm_irq_event, INFINITE);
+        ppu_gcm_pump();
+    }
+    return 0;
+}
+
+static void gcm_irq_start(void)
+{
+    const char* e = getenv("TLP_GCM_IRQ");
+    if (e && *e == '0') return;
+    s_gcm_irq_stack = ppu_guest_call_alloc_stack(0x40000);   /* 256 KB, like an interrupt thread's stack */
+    if (!s_gcm_irq_stack) { fprintf(stderr, "[gcm-irq] no guest stack; handlers stay at HLE calls\n"); return; }
+    s_gcm_irq_event = CreateEventW(NULL, FALSE, FALSE, NULL);
+    HANDLE t = CreateThread(NULL, 1u * 1024 * 1024, gcm_irq_thread, NULL, 0, NULL);
+    if (t) SetThreadPriority(t, THREAD_PRIORITY_HIGHEST);
+    fprintf(stderr, "[gcm-irq] interrupt thread on, stack top 0x%08X\n", s_gcm_irq_stack);
+}
+
 static DWORD WINAPI frame_clock(LPVOID)
 {
     tlp_log_set_thread_label("frame");
@@ -307,33 +343,43 @@ static DWORD WINAPI frame_clock(LPVOID)
             rsx_ok ? "OK -- window open" : "FAILED");
 
     unsigned  last_flip = 0;
-    ULONGLONG next_tick = GetTickCount64();
+    /* Vblank at the console's 59.94 Hz (1001/60 ms) on the QPC clock. Toro asks for VSYNC flips
+     * (SetFlipMode 2) and paces itself with a fixed 29.366 ms sleep after its flip handler plus ~3 ms of work, so
+     * two vblanks (33.37 ms) hold one frame with ~1.3 ms to spare. A 16 ms tick from GetTickCount64 made two ticks
+     * 32 ms, shorter than the game's frame, and every frame took three (about 20 fps). */
+    LARGE_INTEGER qf, qn;
+    QueryPerformanceFrequency(&qf);
+    const long long period = qf.QuadPart * 1001 / 60000;
+    QueryPerformanceCounter(&qn);
+    long long next_tick = qn.QuadPart + period;   /* timeBeginPeriod(1) is set in main() */
 
     for (;;) {
-        Sleep(4);
-        ULONGLONG now = GetTickCount64();
+        /* Wake at the next vblank, or after 1 ms to keep draining: the walker reaching a flip request late eats
+         * the same slack as a late vblank. */
+        QueryPerformanceCounter(&qn);
+        long long wait_ms = (next_tick - qn.QuadPart) * 1000 / qf.QuadPart;
+        Sleep(wait_ms > 1 ? 1 : (wait_ms > 0 ? (DWORD)wait_ms : 0));
+        QueryPerformanceCounter(&qn);
 
         int fired = 0;
-        while ((long long)(now - next_tick) >= 0 && fired < 240) {
+        while (qn.QuadPart - next_tick >= 0 && fired < 240) {
+            /* Drain the FIFO first. This is what writes the RSX sync-fence labels the game's per-frame logic blocks
+             * on, and a flip the walker reaches now has happened before this vblank, so TickFlip completes it here
+             * rather than one vblank later. */
+            if (rsx_ok) cellGcm_rsx_process_fifo();
             cellGcmTickVBlank();
             cellGcmTickFlip();
-            /* Present a pending flip BEFORE draining any further. The flip
-             * fires at a get==put frame boundary on the guest thread, so the
-             * batch held right now is exactly the completed frame; presenting
-             * after the drain races the guest's next-frame writes and shows a
-             * mixed one. */
+            /* Present the flip right after the drain that reached it: that drain stops at the flip, so the batch
+             * held now is exactly the completed frame; a further drain would mix in the next frame's writes. */
             if (rsx_ok && cellGcm_take_flip_pending()) {
                 present_guest_frame();
                 last_flip = cellGcm_flip_request_count();
             }
-            /* Drain the FIFO every tick. This is what writes the RSX sync-fence
-             * labels the game's per-frame logic blocks on, so it has to keep
-             * advancing at 60 Hz even while present() throttles. */
-            if (rsx_ok) cellGcm_rsx_process_fifo();
-            next_tick += 16;             /* ~60 Hz */
+            next_tick += period;
             fired++;
         }
-        if (fired >= 240) next_tick = now;   /* fell too far behind -- resync */
+        if (fired >= 240) next_tick = qn.QuadPart + period;   /* fell too far behind -- resync */
+        if (fired && s_gcm_irq_event) SetEvent(s_gcm_irq_event);
 
         /* Drain at the outer cadence too, not only on the 16 ms tick: titles
          * fence every render pass on a label the drain writes, and one wave of
@@ -461,7 +507,7 @@ static DWORD WINAPI tlp_watchdog(LPVOID p)
         for (unsigned t = 0; t < 64u; t++)
             if (g_hle_inflight[t]) {
                 fprintf(stderr, "[WATCHDOG]   guest-tid %-3u in %s", t, g_hle_inflight[t]);
-                /* (KZ2 printed the calling context here with its patch 6001; not in Toro's series.) */
+                /* (The earlier port printed the calling context here with a patch of its own; not in Toro's series.) */
                 fprintf(stderr, "\n");
             }
         ppu_report_guest_lrs();
@@ -593,18 +639,32 @@ int main(int argc, char** argv)
      *  RSX_LIVE_DRAW=1  the live-draw engine renders (KZ3 ); RSX_LIVE_DRAW=0 selects the plain D3D12 backend.
      * KZ3's SPURS_TASKATTR_DESC=1 (patch 1005, KZ3's Bink task control block as the taskset argument) is left out:
      * ASSUMPTION until TLP's SPURS task setup is mapped.
-     *  LD_LOCAL_WRITEBACK=post  local-memory colour targets are written back to guest memory at sync points (patch
-     *                   6008) once the post stage renders (tlp_ppu_overrides.cpp arms it): the SPU post chain reads
-     *                   the scene target (0x7B0000) through its EA. auto = always, 0 = never.
      *  GCM_PARK_WAIT_MS=86400000  the FIFO walker waits at a JUMP-to-self park until the title patches it, as the RSX
      *                   does (KZ3 patch 1007's wait; its default is 30000 ms, then it resyncs get to put). In a level the
      *                   RSX parks every frame at the post stage's park (IO 0x01A8424C..0x01A8484C, EA 0x41D8424C..,
      *                   in the frame block) until the SPU job Gfx.Post.Unlock overwrites it (a 4-byte DMA put); one
      *                   post chain took more than 30 s on our slow SPU side, the resync skipped the frame tail with the
      *                   render fence release (NV406E label 0x4B, waited for at 0x48AE8) and the main thread waited
-     *                   forever. */
-    static const char* const tlp_env[][2] = { {"PS3_CAMERA", "0"}, {"RSX_LIVE_DRAW", "1"}, {"LD_LOCAL_WRITEBACK", "post"},
-                                              {"GCM_PARK_WAIT_MS", "86400000"} };
+     *                   forever.
+     *  GCM_FLIPCB_ONTICK=1  the guest flip handler runs once, when the flip completes (as on the RSX), not also when
+     *                   the flip is requested. The game waits for its handler before it rebuilds its per-frame jump
+     *                   table (IO 0x100100..0x1002AC, ending in the JUMP back to the main ring, written by
+     *                   func_00188EE0 @0x00188EE0); the early call let it rewrite the table while the FIFO walker was
+     *                   still inside it, and the walker then took the next frame's JUMP back past put into unwritten
+     *                   words (circling resyncs, junk in TRANSFORM_BRANCH_BITS: the black room).
+     *  PS3_VERBOSE=0    no per-call log lines. The runtime is verbose whenever stderr is not a terminal, which is
+     *                   every test run and every launch from Steam or Explorer: about 2,600 unbuffered lines a second
+     *                   on the title (SPURS jobs, waits, tile binds, render targets), each a synchronous write through
+     *                   Wine, 0.2-0.7 ms apiece on the main thread's frame. PS3_VERBOSE=1 brings them back.
+     *  KZ3_VM_FAST=1, KZ3_VM_INLINE=1  the guest load/store fast paths (KZ3 patches 1080, 1091): a plain guest access
+     *                   is one memcpy and a byte swap instead of the out-of-line accessor with its watch, hot-map and
+     *                   null-page checks (those debug switches turn the fast path off by themselves). The room scene's
+     *                   main thread spent about a third of its busy time in the store path (run tlp-room-samp6); with
+     *                   these and patch 7023 the room runs at 28.3 fps instead of 20.0 (tlp-room-fast-a/-b vs
+     *                   tlp-room-base1). KZ3's one stall with 1080 was the MFC table overflow fixed by 1083. */
+    static const char* const tlp_env[][2] = { {"PS3_CAMERA", "0"}, {"RSX_LIVE_DRAW", "1"},
+                                              {"GCM_PARK_WAIT_MS", "86400000"}, {"GCM_FLIPCB_ONTICK", "1"},
+                                              {"PS3_VERBOSE", "0"}, {"KZ3_VM_FAST", "1"}, {"KZ3_VM_INLINE", "1"} };
     for (const auto& e : tlp_env) {
         if (getenv(e[0])) continue;
 #ifdef _WIN32
@@ -675,6 +735,7 @@ int main(int argc, char** argv)
     }
 
     g_ps3_guest_caller = harness_guest_caller;
+    gcm_irq_start();         /* before the frame clock, which wakes it */
     CreateThread(NULL, 4u * 1024 * 1024, frame_clock, NULL, 0, NULL);
     start_diagnostics();
 

@@ -83,7 +83,7 @@ Upstream candidate: a generic guest-write hook in the fs layer (re-data 138).
  /* KZ3 patch 2033: SPU DMA puts (runtime/spu/spu_dma.h) report through a pointer owned by the SPU runtime
   * (spu_coherency.c: spu_set_guest_write_hook). A weak function reference: programs without the SPU runtime
 @@ -3660,9 +3671,13 @@
-  * cache entries per put (r34a/b: texture binds 37-48 ms/frame against 21 in round 30). The ring stays for
+  * cache entries per put (r34a/b: texture binds 37-48 ms/frame against 21 in an earlier test pass). The ring stays for
   * explicit callers (cellGcm_note_guest_write_ea: host tests, PPU-side copies). */
  void cellGcm_note_guest_write_pages_ea(u32 ea, u32 size) { gcm_note_pages_ea(ea, size); }
 +/* KZ3 patch 2078: host file reads into guest memory (runtime/ppu/ppu_fs.cpp: cellFsRead, the AIO read) mark

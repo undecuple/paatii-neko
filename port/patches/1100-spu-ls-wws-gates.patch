@@ -47,7 +47,7 @@ Same LS and register results; the probes print the same lines. No relift needed.
   * is that accessor with those branches removed. The WWS range probes (no gate: image 2 in policy mode, raw lsa
 - * 0xDF0..0xEAF on reads, 0x1320 on writes) stay on the fast path unchanged. */
 + * 0xDF0..0xEAF on reads, 0x1320 on writes) stayed on the fast path until patch 1100 put them behind the gates. */
-+/* KZ3 patch 1100 (spu round 73): the WWS range probes (spu_ls_read_probe's bufferSetArray reads, raw lsa
++/* KZ3 patch 1100: the WWS range probes (spu_ls_read_probe's bufferSetArray reads, raw lsa
 + * 0xDF0..0xEAF, and spu_ls_write_probe_pre's code-buffer writes at 0x1320, both in image 2's policy-mode context, the
 + * context every WWS job runs in) only print, each up to its cap (48 and 6 lines, reached in the first seconds of
 + * a K2 run); after that they do nothing, yet every LS load and store of every job still tested the range (3 and 2

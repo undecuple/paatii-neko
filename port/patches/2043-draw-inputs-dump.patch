@@ -14,7 +14,7 @@ tools/smoke/fp_eval.py to run the program on the CPU and compare with the draw's
            snprintf(path, sizeof(path), "%s\\draw_f%06u_i%04u_%08X.ppm", dir, frame, idx, surf);
            ld_dump_surface_ppm(path, &g.surfaces[target]);
        }
-+      /* Patch 2043 (KZ3 rsx round 43): LD_DRAW_INPUTS=<frame>:<idx> (idx = the frame-relative draw index
++      /* Patch 2043 (KZ3): LD_DRAW_INPUTS=<frame>:<idx> (idx = the frame-relative draw index
 +       * above) writes everything the fragment stage of that one draw reads, so the program can be evaluated
 +       * on the CPU (tools/smoke/fp_eval.py): inputs_f<frame>_i<idx>.txt (target, blend, the raw register file
 +       * as hex, per enabled unit the decoded state and raw words 0x1A00+u*0x20 / 0x1840+u*4, the fragment

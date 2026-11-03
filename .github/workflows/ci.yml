@@ -1,6 +1,6 @@
 # CI without the game: the exe cannot be built here (the lifted code comes from the player's own copy of the game and
 # is never committed), so this checks what needs no game data: scripts parse, every patch applies to the pinned
-# ps3recomp, and the self-contained host test runs. Only the checkout action is used, pinned to a full commit SHA (v7.0.1).
+# ps3recomp, the self-contained host tests run and the project card (.recomp.json) is checked. Only the checkout action is used, pinned to a full commit SHA (v7.0.1).
 name: CI
 on:
   push:
@@ -25,5 +25,10 @@ jobs:
         run: git ls-files -z 'tools/*.py' 'port/*.py' | xargs -0 python3 -I -m py_compile
       - name: Patches apply to the pinned ps3recomp
         run: bash tools/ps3recomp-patched.sh
-      - name: Host test (fake PE files only)
-        run: python3 tools/release/test_stage_sdl3.py
+      - name: Host tests (fake PE files, temp repos; no game data)
+        run: |
+          python3 tools/release/test_stage_sdl3.py
+          python3 tools/release/test_recomp_card.py
+          python3 tools/release/test_release.py
+      - name: Project card agrees with the README and the release criteria
+        run: python3 tools/release/recomp_card.py --no-sfo

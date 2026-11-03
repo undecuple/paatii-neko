@@ -6,7 +6,7 @@
           * Default 1 = the original single poll thread. */
 -        int n = 1;
 +        /* KZ3 patch 1034: default = one thread per virtual SPU (was 1); KZ3_SPURS_THREADS=1 restores the
-+         * single poll thread. spu round 21: level 0.83 vs 0.34 flips/s with busy no-sleep (re-notes-spu). */
++         * single poll thread. an earlier test pass: level 0.83 vs 0.34 flips/s with busy no-sleep (the RE notes). */
 +        int n = 8;
          { const char* e = getenv("KZ3_SPURS_THREADS"); if (e) n = atoi(e); }
          if (n < 1) n = 1;

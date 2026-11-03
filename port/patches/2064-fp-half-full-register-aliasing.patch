@@ -19,7 +19,7 @@ diff --git a/libs/video/rsx_fp_decompiler.c b/libs/video/rsx_fp_decompiler.c
          "                  (mask & 8u) ? decoded.a : v.a);\n}\n");
  }
  
-+/* Patch 2064 (KZ3 rsx round 63): NV40 register aliasing. The half and full temp files are one register file:
++/* Patch 2064 (KZ3): NV40 register aliasing. The half and full temp files are one register file:
 + * h[2k] is the low 64 bits of r[k] (h.x/h.y = the low/high halves of r[k].x, h.z/h.w those of r[k].y) and
 + * h[2k+1] the high 64 bits (r[k].z, r[k].w). Compiled programs rely on it: KZ3's G-buffer shaders write the
 + * view normal to h0.xy and read r0.x to get the two halves as one 32-bit word, which UPB splits into the bytes

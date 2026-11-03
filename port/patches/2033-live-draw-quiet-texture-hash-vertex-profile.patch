@@ -98,7 +98,7 @@ diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
 + * ld: the .refptr stub stayed undefined.) */
 +extern void spu_set_guest_write_hook(void (*hook)(uint32_t ea, uint32_t size)) __attribute__((weak));
 +/* The SPU hook marks pages only. Feeding every DMA put into the patch-2017 gv ring made the walker scan all
-+ * cache entries per put (r34a/b: texture binds 37-48 ms/frame against 21 in round 30). The ring stays for
++ * cache entries per put (r34a/b: texture binds 37-48 ms/frame against 21 in an earlier test pass). The ring stays for
 + * explicit callers (cellGcm_note_guest_write_ea: host tests, PPU-side copies). */
 +void cellGcm_note_guest_write_pages_ea(u32 ea, u32 size) { gcm_note_pages_ea(ea, size); }
 +void cellGcm_spu_guest_write_hook_install(void)
@@ -125,7 +125,7 @@ diff --git a/libs/video/rsx_live_draw.c b/libs/video/rsx_live_draw.c
  #define MAX_SURFACES     64
 -#define MAX_TEXTURES     1024
 +#define MAX_TEXTURES     8192   /* patch 2033: was 1024; the level binds ~2,500 distinct textures a frame and the
-+                                 * LRU evicted ~243 of them per frame (re-data 72), each decoded again */
++                                 * LRU evicted ~243 of them per frame (RE report 72), each decoded again */
 +#define TEX_INDEX_SIZE   (4u * MAX_TEXTURES)   /* patch 2033: hash index over g.textures, power of two */
 +#define LD_TEX_HASH_SPAN_DEFAULT 0   /* patch 2033: LD_TEX_HASH_SPAN default (frames; 0 = hash every frame) */
  #define MAX_RETIRED_TEXTURES 4096

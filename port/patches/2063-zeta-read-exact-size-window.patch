@@ -1,6 +1,6 @@
 KZ3 patch 2063 (pass 63): a texture read of a host zeta gets an SRV of exactly the texture's size (LD_ZWIN=0 = old).
 rsx_live_draw.c: the R32F depth snapshot of a zeta is as large as the biggest pass that used its address (patch
-2022). KZ3's near sun-shadow cascade (512x512 Z16 at 0x2980000 in Pyrrhus Outskirts and the other 512-cascade
+2022). KZ3's near sun-shadow cascade (512x512 Z16 at 0x2980000 in an outdoor level and the other 512-cascade
 levels) shares that address with the 640x360 half-resolution depth, so the snapshot is 640x512 and the sun pass,
 which samples the map with normalised coordinates, looked up every receiver 1.25x too far right: sunlight indoors
 (stairwell walls and ceiling lit, the overbright look). zdepth_window copies the top-left w x h of the snapshot
@@ -50,9 +50,9 @@ Upstream candidate (general: any two surfaces of different sizes at one zeta add
      return 1;
  }
  
-+/* Patch 2063 (KZ3 rsx round 63): a texture that reads a host zeta gets an SRV of exactly its own size.
++/* Patch 2063 (KZ3): a texture that reads a host zeta gets an SRV of exactly its own size.
 + * The R32F snapshot is as large as the biggest pass that used the zeta offset (patch 2022), so two
-+ * surfaces of different sizes at one address share it. KZ3 (Pyrrhus Outskirts and other 512x512-cascade
++ * surfaces of different sizes at one address share it. KZ3 (an outdoor level and other 512x512-cascade
 + * levels) draws its near sun-shadow cascade, a 512x512 Z16 map, at 0x2980000, which is also its 640x360
 + * half-resolution depth: the snapshot is 640x512. The sun pass samples the map with normalised
 + * coordinates (DEPTH16 compare, linear, clamp), so on the 640-wide snapshot every lookup landed 1.25x
@@ -141,7 +141,7 @@ Upstream candidate (general: any two surfaces of different sizes at one zeta add
 +    return (int)(SRV_ZWIN_BASE + i * LD_ZWIN_PER + k);
 +}
 +
- /* Patch 2024 (D46 spike, diagnostic): LD_GEOM_CAPTURE=1 with LD_SURF_DUMP
+ /* Patch 2024 (spike, diagnostic): LD_GEOM_CAPTURE=1 with LD_SURF_DUMP
   * captures, in the frame after the dump fires, the guest clip-space position
   * (o[0], before the host's posscale/offset) and the host clip position (Out.pos,
 @@ -7791,7 +7890,7 @@

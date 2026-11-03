@@ -13,7 +13,7 @@ diff --git a/libs/input/pad_host.h b/libs/input/pad_host.h
      hs->sensor_z = pad_sensor_word((float)hs->sensor_z - 1.0f);
  }
  
-+/* ENHANCEMENT (D10): a stick stands in for the SIXAXIS on a pad without motion (XInput, SDL pads without an
++/* ENHANCEMENT: a stick stands in for the SIXAXIS on a pad without motion (XInput, SDL pads without an
 + * accelerometer, keyboard). Stick up or down raises Y above its gravity rest 399 by up to 408 words (3.6 g, 113 per g),
 + * so a flick either way and back is one swing: the chick minigame arms at Y >= 562 and counts on Y <= 462 (its script,
 + * 0xFF6E), i.e. at 40% deflection and on release. Left/right moves X around 512; Z and the gyro stay at rest. */
@@ -35,7 +35,7 @@ diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
      if (setting & CELL_PAD_SETTING_SENSOR_ON) {
          /* 4010: the pad's accelerometer and gyro where it has them (pad_sdl_sensors); otherwise a DS3 at rest
           * (512 = 0 g, Y 399 = gravity, gyro 512 = still). */
-+        /* 7017 (D10): without a motion sensor the right stick stands in; TLP_MOTION_STICK=0 keeps a DS3 at rest. */
++        /* 7017: without a motion sensor the right stick stands in; TLP_MOTION_STICK=0 keeps a DS3 at rest. */
 +        static int motion_stick = -1;
 +        if (motion_stick < 0) { const char* e = getenv("TLP_MOTION_STICK"); motion_stick = !(e && e[0] == '0'); }
 +        if (!hs->has_sensor && motion_stick) {

@@ -69,7 +69,7 @@ diff --git a/libs/video/rsx_live_draw.c b/libs/video/rsx_live_draw.c
 +/* Patch 2014: FP16 textures keep their format. W16Z16Y16X16_FLOAT was decoded
 + * to RGBA8 (clamped to [0,1], negatives to 0), which threw away the HDR range
 + * of the FP16 buffers Killzone 3's composite reads; Y16_X16_FLOAT (0x9F, 172
-+ * binds in the first level's frame, round 11 capture) was not decoded at all
++ * binds in the first level's frame, an earlier capture) was not decoded at all
 + * and read SRV_WHITE. Both now upload as R16G16B16A16_FLOAT / R16G16_FLOAT:
 + * each big-endian half is byte-swapped in place, the first half in memory is
 + * D3D component R (X), then G (Y), B (Z), A (W). The RSX remap is not applied
