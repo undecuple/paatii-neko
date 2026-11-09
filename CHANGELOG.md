@@ -14,6 +14,9 @@ project has no release yet and is partly playable: see [RELEASE-CRITERIA.md](doc
 - The PPU code (about 15,000 functions) and 17 SPU programs are translated to C ahead of time and built into one Windows x64 exe from your own copy of the game; see [docs/BUILDING.md](docs/BUILDING.md).
 - A project site, https://undecuple.github.io/paatii-neko/, generated from the same pages as the repository.
 
+### Changed
+- The README leads with what the port is, what you need and its key numbers, each with its proof; the README and the project site no longer show game screenshots.
+
 ### Fixed
 - A Game mode category label that was too long for its button is now narrowed to fit, as the game asks, instead of being cut off.
 
