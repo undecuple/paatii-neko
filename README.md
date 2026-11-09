@@ -8,6 +8,8 @@
 **TORO ! Let's Party ! (PS3), rebuilt as a native PC program from the game's own code, with no CPU emulator.**
 
 [![CI](https://github.com/undecuple/paatii-neko/actions/workflows/ci.yml/badge.svg)](https://github.com/undecuple/paatii-neko/actions/workflows/ci.yml)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-B35400?style=flat-square&labelColor=6B4423)](LICENSE)
+[![Project site](https://img.shields.io/badge/project-site-4D6600?style=flat-square&labelColor=6B4423)](https://undecuple.github.io/paatii-neko/)
 
 > **Bring your own game.** This repository holds no game code, assets, keys or firmware, only a few screenshots of
 > the port. You need your own disc (BCAS20087, version 01.00); the port is built on your PC from it.
