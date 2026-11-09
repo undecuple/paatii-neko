@@ -170,8 +170,12 @@ def main():
         expect(all(i >= 0 for i in ids) and ids == sorted(ids), f"sections missing or out of order: {ids}")
         expect(page.find("パーティー猫！") < page.find("<h1>Paatii Neko!</h1>"), "Japanese title not above the English one")
         expect("banner" not in page, "page mentions the banner")
-        expect(page.count("<figure") == len(website.SHOTS) and "Caption of story-book.png." in page, "screens or captions wrong")
-        expect("Game imagery © Sony Interactive Entertainment" in page, "image credit missing")
+        expect(page.count("<figure") == len(website.SHOTS), "screens wrong")
+        if website.SHOTS:
+            expect(all(f"Caption of {n}." in page for n, _t in website.SHOTS), "captions wrong")
+            expect("Game imagery © Sony Interactive Entertainment" in page, "image credit missing")
+        else:
+            expect("Game imagery" not in page and "gallery" not in page, "image credit or gallery without screens")
         expect("adapted from <a href=\"" + website.HELGHAST + "\">Project Helghast</a> by undecuple, MIT" in page,
                "style credit missing")
         expect("that holds <code>PS3_GAME</code>" in page and "Linux with <a href=\"https://nixos.org\">Nix</a>" in page,
@@ -193,16 +197,17 @@ def main():
         expect(run("--root", r, "--check")[0] == 1, "a font file that is not woff2 passes")
 
         css_bad = tokens_css(ink="#000000")
-        for name, kw, msg in (("noshot", {"shots": False}, "screenshot"), ("nosocial", {"social": False}, "social-preview"),
-                              ("nocss", {"css": None}, "style.css"), ("noreq", {"req": None}, "requirements.md"),
-                              ("badreq", {"req": REQ.replace("## To run", "## Run")}, "To run"),
-                              ("noreadme", {"readme": "# x\n"}, "Status"),
-                              ("noofficial", {"readme": README.replace("**Official channels:**", "Channels:")}, "Official channels"),
-                              ("nofont", {"fonts": False}, "woff2"),
-                              ("badtoken", {"css": css_bad}, "token --ink"),
-                              ("cssurl", {"css": tokens_css() + "a{background:url(https://example.com/x.png)}"}, "style.css loads"),
-                              ("cssdark", {"css": tokens_css() + "@media (prefers-color-scheme: dark){a{color:red}}"}, "prefers-color-scheme"),
-                              ("cssimport", {"css": tokens_css() + "@import url(x.css);"}, "@import")):
+        cases = (("noshot", {"shots": False}, "screenshot"), ("nosocial", {"social": False}, "social-preview"),
+                 ("nocss", {"css": None}, "style.css"), ("noreq", {"req": None}, "requirements.md"),
+                 ("badreq", {"req": REQ.replace("## To run", "## Run")}, "To run"),
+                 ("noreadme", {"readme": "# x\n"}, "Status"),
+                 ("noofficial", {"readme": README.replace("**Official channels:**", "Channels:")}, "Official channels"),
+                 ("nofont", {"fonts": False}, "woff2"),
+                 ("badtoken", {"css": css_bad}, "token --ink"),
+                 ("cssurl", {"css": tokens_css() + "a{background:url(https://example.com/x.png)}"}, "style.css loads"),
+                 ("cssdark", {"css": tokens_css() + "@media (prefers-color-scheme: dark){a{color:red}}"}, "prefers-color-scheme"),
+                 ("cssimport", {"css": tokens_css() + "@import url(x.css);"}, "@import"))
+        for name, kw, msg in cases[0 if website.SHOTS else 1:]:      # no screens listed: nothing to miss
             root = pathlib.Path(t) / name
             fixture(root, **kw)
             if name in ("nofont",):      # generating works without the fonts (they are made from the page); --check refuses

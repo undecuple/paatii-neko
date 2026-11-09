@@ -5,27 +5,59 @@
 
 # パーティー猫！ (Paatii Neko!)
 
-**TORO ! Let's Party ! // Unofficial PC Port (static recompilation)**
+**TORO ! Let's Party ! (PS3), rebuilt as a native PC program from the game's own code, with no CPU emulator.**
 
 [![CI](https://github.com/undecuple/paatii-neko/actions/workflows/ci.yml/badge.svg)](https://github.com/undecuple/paatii-neko/actions/workflows/ci.yml)
 
-A native PC port of the PS3 party game *TORO ! Let's Party !*, made by static recompilation on
-[ps3recomp](https://github.com/sp00nznet/ps3recomp); you need your own disc (BCAS20087, version 01.00). It is not an
-emulator and not a rewrite ([how it works](docs/HOW-IT-WORKS.md)).
+> **Bring your own game.** This repository holds no game code, assets, keys or firmware, only a few screenshots of
+> the port. You need your own disc (BCAS20087, version 01.00); the port is built on your PC from it.
+> [What you need](docs/GETTING-FILES.md)
+
+**28.9** frames/s in the room scene (the game targets 30) · **8** of 24 game features working, **9** partly
+([list](docs/FEATURES.md)) · **3** fixes merged into ps3recomp ([#674](https://github.com/sp00nznet/ps3recomp/pull/674),
+[#675](https://github.com/sp00nznet/ps3recomp/pull/675), [#676](https://github.com/sp00nznet/ps3recomp/pull/676))
+
+[Getting started](#getting-started) · [Status](#status) · [Compatibility](#compatibility) · [Building](#building) · [Known issues](#settings-and-known-issues) · [Reporting bugs](#reporting-bugs) · [Project site](https://undecuple.github.io/paatii-neko/)
+
+## What makes it different
+
+| | Proof |
+|---|---|
+| The game's own code, translated ahead of time to x64: no CPU emulator runs while you play | [How it works](docs/HOW-IT-WORKS.md) |
+| No game code, assets, keys or firmware are in this repository; the port is built from your copy | [Getting the files](docs/GETTING-FILES.md) |
+| Everything the port itself writes stays in its own folder (the graphics driver may keep its own shader cache), and it has no online feature of its own (whether the game itself connects is not checked yet) | [Privacy](docs/PRIVACY.md) |
+| General fixes go back to ps3recomp, the recompiler this port is built on | [#674](https://github.com/sp00nznet/ps3recomp/pull/674), [#675](https://github.com/sp00nznet/ps3recomp/pull/675), [#676](https://github.com/sp00nznet/ps3recomp/pull/676) |
+| Open source under MIT | [LICENSE](LICENSE) |
+
+## Getting started
+
+There is no release, installer or download yet. An installer that builds the port on your PC is planned before the
+first release; until then you build it yourself.
+
+| Platform | Today | Caveat |
+|---|---|---|
+| Linux, with Proton | build from source: [Building](#building) | tested on one PC so far |
+| Windows 10/11 | build on Linux, run the exe | coming soon: not run on Windows yet |
+| Linux, native (Vulkan) | coming soon | planned |
+
+**You need**
+- **Your TORO ! Let's Party ! disc** (BCAS20087, version 01.00), as a folder (the one that holds `PS3_GAME`).
+- **The game's program file** (`EBOOT.elf`) from your own copy.
+- **The PS3 system fonts** from your own console's firmware, for the game's text.
+- Linux with Nix to build; Windows x64 with a Direct3D 12 GPU, or Proton on Linux, to run.
+
+What each must contain and where it goes: [docs/GETTING-FILES.md](docs/GETTING-FILES.md); hardware and the rest:
+[docs/requirements.md](docs/requirements.md). This project ships none of them.
+
+Everything the port writes stays in the folder it runs from; it has no online feature of its own, and the game's
+network use is not checked yet: [docs/PRIVACY.md](docs/PRIVACY.md). Changes: [CHANGELOG.md](CHANGELOG.md).
+
+## Status
 
 **Status: partly playable.** No release yet: the port is built from source. The Story mode plays by hand into
 episode 2 at about 29 frames/s in its room scene (target 30), and the first minigame plays a full round; the other
 minigames and sound are unchecked. Details: [docs/STATUS.md](docs/STATUS.md); what a release must meet to be called
-playable: [docs/RELEASE-CRITERIA.md](docs/RELEASE-CRITERIA.md).
-
-[Getting started](#getting-started) · [Compatibility](#compatibility) · [Building](#building) · [Known issues](#settings-and-known-issues) · [Reporting bugs](#reporting-bugs) · [Project site](https://undecuple.github.io/paatii-neko/)
-
-<p align="center">
-  <a href="docs/SCREENSHOTS.md"><img src="docs/screenshots/story-book.png" width="720"
-       alt="The Story mode's memory book in the port: a photo of Toro beside a path of hydrangeas, with the narration &quot;The cat's name was Toro. Toro was a strange cat who dreamed of being human.&quot;"></a><br>
-  <sub>The Story mode's memory book under Proton, 2026-10-20 (work in progress). More: <a href="docs/SCREENSHOTS.md">screenshots</a>.
-  Game imagery © Sony Interactive Entertainment.</sub>
-</p>
+playable: [docs/RELEASE-CRITERIA.md](docs/RELEASE-CRITERIA.md). How it works: [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md).
 
 ## Compatibility
 
@@ -38,23 +70,6 @@ playable: [docs/RELEASE-CRITERIA.md](docs/RELEASE-CRITERIA.md).
 "Verified" means a run on that setup; "implemented" means the code is in but not run there; "planned" means neither.
 Speed figures (26.8 frames/s on the title screen and 28.9 in the room scene, on a build of 2026-11-02, under Proton)
 are in [docs/STATUS.md](docs/STATUS.md). Feature by feature: [docs/FEATURES.md](docs/FEATURES.md).
-
-## Getting started
-
-There is no release, installer or download yet. An installer that builds the port on your PC is planned before the
-first release; until then you build it yourself.
-
-**You need**
-- **Your TORO ! Let's Party ! disc** (BCAS20087, version 01.00), as a folder (the one that holds `PS3_GAME`).
-- **The decrypted EBOOT** (`EBOOT.elf`) of your own copy.
-- **The PS3 system fonts** from your own console's firmware, for the game's text.
-- Linux with Nix to build; Windows x64 with a Direct3D 12 GPU, or Proton on Linux, to run.
-
-What each must contain and where it goes: [docs/GETTING-FILES.md](docs/GETTING-FILES.md); hardware and the rest:
-[docs/requirements.md](docs/requirements.md). This project ships none of them and gives no decryption steps.
-
-Everything the port writes stays in the folder it runs from; it has no online feature of its own, and the game's
-network use is not checked yet: [docs/PRIVACY.md](docs/PRIVACY.md). Changes: [CHANGELOG.md](CHANGELOG.md).
 
 ## Settings and known issues
 
@@ -129,7 +144,8 @@ repository. Details: [NOTICE.md](NOTICE.md#reuse-and-attribution-including-ai-an
 affiliated with or endorsed by Sony Interactive Entertainment or the game's makers and publishers.
 
 **You need your own copy of the game.** This repository contains only the port: source code, patches to the
-recompiler, tools and documentation. It contains no game code, data, assets, keys or firmware, and it never will.
+recompiler, tools and documentation. It contains no game code, data, assets, keys or firmware, and it never will; the
+screenshots in `docs/screenshots/` show the port running and are credited to Sony Interactive Entertainment.
 *TORO ! Let's Party !* is © Sony Interactive Entertainment.
 
 </details>
