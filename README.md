@@ -5,12 +5,13 @@
 
 # パーティー猫！ (Paatii Neko!)
 
-**TORO ! Let's Party ! (PS3), rebuilt as a native PC program from the game's own code: not an emulator.**
+**TORO ! Let's Party ! (PS3), rebuilt as a native PC program from the game's own code, with no CPU emulator.**
 
 [![CI](https://github.com/undecuple/paatii-neko/actions/workflows/ci.yml/badge.svg)](https://github.com/undecuple/paatii-neko/actions/workflows/ci.yml)
 
-> **Bring your own game.** This repository holds no game code, assets, keys or firmware. You need your own disc
-> (BCAS20087, version 01.00); the port is built on your PC from it. [What you need](docs/GETTING-FILES.md)
+> **Bring your own game.** This repository holds no game code, assets, keys or firmware, only a few screenshots of
+> the port. You need your own disc (BCAS20087, version 01.00); the port is built on your PC from it.
+> [What you need](docs/GETTING-FILES.md)
 
 **28.9** frames/s in the room scene (the game targets 30) · **8** of 24 game features working, **9** partly
 ([list](docs/FEATURES.md)) · **3** fixes merged into ps3recomp ([#674](https://github.com/sp00nznet/ps3recomp/pull/674),
@@ -23,8 +24,8 @@
 | | Proof |
 |---|---|
 | The game's own code, translated ahead of time to x64: no CPU emulator runs while you play | [How it works](docs/HOW-IT-WORKS.md) |
-| Nothing of the game is in this repository; everything is built from your copy | [Getting the files](docs/GETTING-FILES.md) |
-| Everything the port writes stays in its own folder, and it has no online feature of its own (whether the game itself connects is not checked yet) | [Privacy](docs/PRIVACY.md) |
+| No game code, assets, keys or firmware are in this repository; the port is built from your copy | [Getting the files](docs/GETTING-FILES.md) |
+| Everything the port itself writes stays in its own folder (the graphics driver may keep its own shader cache), and it has no online feature of its own (whether the game itself connects is not checked yet) | [Privacy](docs/PRIVACY.md) |
 | General fixes go back to ps3recomp, the recompiler this port is built on | [#674](https://github.com/sp00nznet/ps3recomp/pull/674), [#675](https://github.com/sp00nznet/ps3recomp/pull/675), [#676](https://github.com/sp00nznet/ps3recomp/pull/676) |
 | Open source under MIT | [LICENSE](LICENSE) |
 
@@ -143,7 +144,8 @@ repository. Details: [NOTICE.md](NOTICE.md#reuse-and-attribution-including-ai-an
 affiliated with or endorsed by Sony Interactive Entertainment or the game's makers and publishers.
 
 **You need your own copy of the game.** This repository contains only the port: source code, patches to the
-recompiler, tools and documentation. It contains no game code, data, assets, keys or firmware, and it never will.
+recompiler, tools and documentation. It contains no game code, data, assets, keys or firmware, and it never will; the
+screenshots in `docs/screenshots/` show the port running and are credited to Sony Interactive Entertainment.
 *TORO ! Let's Party !* is © Sony Interactive Entertainment.
 
 </details>
