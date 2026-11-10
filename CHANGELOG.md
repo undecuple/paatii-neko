@@ -9,6 +9,7 @@ project has no release yet and is partly playable: see [RELEASE-CRITERIA.md](doc
 - The recompiled game starts under Proton on Linux, opens a Direct3D 12 window and runs from the studio logos to the title screen and the main menu (Story, Game, Gallery, Extras, Options).
 - Story mode: the memory book with photos, narration and speech bubbles, a real-time 3D room scene and the start of episode 2.
 - Game mode opens, and the first minigame, Flap your wings! Chick!, plays a full round to its score screen.
+- The build checks the game's program file first: the Japanese release, another version or a still-encrypted file stops it with a plain message, and an unrecognised copy of the right release only warns.
 - Keyboard input with the game's original controls, and pads through SDL3 (a DualShock 4 played by hand; other pads untested). On a pad without a motion sensor, or on the keyboard, the right stick stands in for motion.
 - The game writes its save. Loading it after a restart is not checked.
 - The PPU code (about 15,000 functions) and 17 SPU programs are translated to C ahead of time and built into one Windows x64 exe from your own copy of the game; see [docs/BUILDING.md](docs/BUILDING.md).

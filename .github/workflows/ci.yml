@@ -31,6 +31,7 @@ jobs:
           python3 tools/release/test_recomp_card.py
           python3 tools/release/test_release.py
           python3 tools/release/test_website.py
+          python3 tools/release/test_eboot_ids.py
       - name: Project card agrees with the README and the release criteria
         run: python3 tools/release/recomp_card.py --no-sfo
       - name: Project page is up to date and loads nothing but its own files

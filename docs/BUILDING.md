@@ -65,6 +65,12 @@ nix develop .#win --command tools/sandbox.sh -- tools/build-tlp.sh build/tlp-win
 
 `tools/lift.sh` runs step 2 itself, so step 2 on its own is only a check that the patches apply.
 
+Before it lifts anything, `tools/lift.sh` checks that `work/bin/EBOOT.elf` is the build the port is made from
+(`tools/release/eboot_ids.py`, table `tools/release/eboot_ids.json`: TORO ! Let's Party ! BCAS20087, version 01.00). The
+Japanese release, another version or a still-encrypted file stops it with a plain message; a copy of the right release
+that is not a known one only warns. With the disc folder at `Game/` (or `TLP_DISC=<folder that holds PS3_GAME>`) its
+`PARAM.SFO` is checked too. The same check on its own: `python3 tools/release/eboot_ids.py --eboot work/bin/EBOOT.elf`.
+
 The result is `build/tlp-win/tlp.exe`, a Windows x64 program. It needs `SDL3.dll` next to it:
 
 ```sh
