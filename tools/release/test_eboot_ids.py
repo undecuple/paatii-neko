@@ -33,6 +33,15 @@ def fake_elf(entry, text, pad=b""):
     return eh + ph + pad
 
 
+def seg_elf(payload, tail=b""):
+    """An ELF whose one PT_LOAD (offset 120, filesz = len(payload)) can be hashed; p_paddr differs from p_filesz so a
+    wrong-offset read changes the hash; `tail` = bytes after the segment (another decrypter's padding)."""
+    eh = b"\x7fELF\x02\x02\x01" + b"\0" * 9
+    eh += struct.pack(">HHIQQQIHHHHHH", 2, 21, 1, 0x854558, 64, 0, 0, 64, 56, 1, 0, 0, 0)
+    ph = struct.pack(">IIQQQQQQ", 1, 5, 120, 0x10000, 0xDEAD0000, len(payload), len(payload) + 16, 0x10000)
+    return eh + ph + payload + tail
+
+
 def fake_sfo(pairs):
     """PARAM.SFO with utf-8 string values."""
     keys = b"".join(k.encode() + b"\0" for k, _ in pairs)
@@ -72,7 +81,8 @@ def main():
     check(len(sup) == 1 and sup[0]["title_id"] == "BCAS20087", "shipped table: BCAS20087 is the one supported build")
     check(all(len(b[p + "sha256"]) == 64 and b[p + "size"] for b in tbl for p in ("", "self_")),
           "shipped table: every row has SELF and ELF sizes and SHA-256 hashes")
-    check(all(set(b) >= {"title_id", "region", "app_ver", "size", "sha256", "status"} for b in tbl)
+    check(all(set(b) >= {"title_id", "region", "app_ver", "size", "sha256", "status", "self_sha256",
+                         "segment_sha256"} for b in tbl)
           and {b["status"] for b in tbl} <= {"tested", "untested", "unsupported"},
           "shipped table: the shared list fields on every row")
 
@@ -95,6 +105,20 @@ def main():
 
         rc, txt = run(t + ["--eboot", us])
         check(rc == 0 and "OK E1" in txt and "BCAS20087" in txt, "the supported decrypted build is OK", txt)
+        seg_a = put(os.path.join(tmp, "seg_a.elf"), seg_elf(b"code" * 40))
+        seg_b = put(os.path.join(tmp, "seg_b.elf"), seg_elf(b"code" * 40, b"\0" * 24))
+        seg_c = put(os.path.join(tmp, "seg_c.elf"), seg_elf(b"code" * 39 + b"cOde"))
+        h = hashlib.sha256(struct.pack(">QQQ", 0x10000, 160, 176) + b"code" * 40).hexdigest()
+        check(ei.segment_sha256(seg_a) == h, "segment hash: vaddr, filesz, memsz then the segment bytes", h)
+        check(ei.segment_sha256(seg_b) == h, "segment hash ignores bytes outside the segments")
+        segtable = os.path.join(tmp, "segtable.json")
+        with open(segtable, "w", encoding="utf-8") as f:
+            json.dump({"entries": [dict(tbl[0], segment_sha256=h)]}, f)
+        rc, txt = run(["--table", segtable, "--eboot", seg_b])
+        check(rc == 0 and "OK E1" in txt and "another tool" in txt,
+              "another layout of the same segments is OK by the segment hash", txt)
+        rc, txt = run(["--table", segtable, "--eboot", seg_c])
+        check(rc == 0 and "WARN E1" in txt, "one changed segment byte is unknown", txt)
         rc, txt = run(t + ["--eboot", jp])
         check(rc == 1 and "FAIL E1" in txt and "Japanese release" in txt, "the Japanese build fails by name", txt)
         rc, txt = run(t + ["--eboot", us_self])

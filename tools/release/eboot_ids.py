@@ -12,8 +12,10 @@ Codes:
   E1  EBOOT: a known build (OK), the Japanese release (FAIL), an unknown build of the right game (WARN), a program
       that does not match the original (WARN: may be patched or damaged), neither ELF nor SELF (FAIL)
   E2  EBOOT is still encrypted where a decrypted one is needed (--need-elf: FAIL)
-An unknown decrypted file with the supported build's entry point and code size is "unknown build, may still work":
-another decrypter can lay the same program out differently. Only when those differ too is it called modified.
+A decrypted file is matched by its whole-file hash, else by its segment hash (the loaded segments only, so another
+decrypter's layout still matches; definition in the shared EBOOT id table). An unknown one with the supported
+build's entry point and code size is "unknown build, may still work"; only when those differ too is it called
+modified.
 """
 import argparse
 import hashlib
@@ -30,7 +32,16 @@ ELF_MAGIC = b"\x7fELF"
 
 def load_table(path=TABLE):
     with open(path, encoding="utf-8") as f:
-        return json.load(f)["builds"]
+        d = json.load(f)
+    return d.get("entries", d.get("builds"))
+
+
+REGION_WORDS = {"Asia": "Asian English", "JP": "Japanese", "US": "US", "EU": "European"}
+
+
+def release(b):
+    """'the Japanese release' from the table's short region label."""
+    return f"the {REGION_WORDS.get(b['region'], b['region'])} release"
 
 
 def parse_sfo(d):
@@ -64,6 +75,38 @@ def elf_layout(head):
     return entry, None
 
 
+def segment_sha256(path):
+    """Shared EBOOT id table: SHA-256 over each PT_LOAD with filesz or memsz (BE64 vaddr, filesz, memsz, then the
+    filesz bytes at offset), in program-header order; nothing else. None when the file is not a 64-bit BE ELF."""
+    with open(path, "rb") as f:
+        d = f.read(64)
+        if d[:4] != ELF_MAGIC or len(d) < 64 or d[4] != 2 or d[5] != 2:
+            return None
+        phoff = struct.unpack(">Q", d[0x20:0x28])[0]
+        phentsize, phnum = struct.unpack(">HH", d[0x36:0x3A])
+        h = hashlib.sha256()
+        for i in range(phnum):
+            f.seek(phoff + i * phentsize)
+            ph = f.read(56)
+            if len(ph) < 56:
+                return None
+            typ = struct.unpack(">I", ph[0:4])[0]
+            off, vaddr = struct.unpack(">QQ", ph[8:24])
+            filesz, memsz = struct.unpack(">QQ", ph[32:48])
+            if typ != 1 or (filesz == 0 and memsz == 0):
+                continue
+            h.update(struct.pack(">QQQ", vaddr, filesz, memsz))
+            f.seek(off)
+            left = filesz
+            while left:
+                b = f.read(min(left, 1 << 20))
+                if not b:
+                    return None
+                h.update(b)
+                left -= len(b)
+    return h.hexdigest()
+
+
 def sha256_of(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -89,8 +132,8 @@ def check_sfo(sfo, builds):
     if b is None:
         return [("FAIL", "S1", f"This is version {ver or '?'} of {known[0]['title']}; the port needs {want}.")]
     if b["status"] != "tested":
-        return [("FAIL", "S1", f"This is the {b['region']} release, {name(b)}. The port is built from "
-                               f"the {sup[0]['region']} release, {want}.")]
+        return [("FAIL", "S1", f"This is {release(b)}, {name(b)}. The port is built from "
+                               f"{release(sup[0])}, {want}.")]
     return [("OK", "S1", f"{name(b)} found.")]
 
 
@@ -107,13 +150,19 @@ def check_eboot(path, builds, need_elf=False):
     digest = sha256_of(path)
     pre = "self_" if kind == "self" else ""
     hit = next((b for b in builds if b.get(pre + "sha256") == digest and b.get(pre + "size") in (None, size)), None)
+    same_segments = False
+    if hit is None and kind == "elf":   # shared table: whole-file hash, else the segment hash, else unknown
+        seg = segment_sha256(path)
+        hit = next((b for b in builds if seg and b.get("segment_sha256") == seg), None)
+        same_segments = hit is not None
     out = []
     if hit and hit["status"] != "tested":
-        out.append(("FAIL", "E1", f"The program file is from the {hit['region']} release, {name(hit)}. The port "
-                                  f"is built from the {sup[0]['region']} release, {name(sup[0])}."))
+        out.append(("FAIL", "E1", f"The program file is from {release(hit)}, {name(hit)}. The port "
+                                  f"is built from {release(sup[0])}, {name(sup[0])}."))
     elif hit:
         out.append(("OK", "E1", f"Program file of {name(hit)}"
-                                + (" (still encrypted)." if kind == "self" else ".")))
+                                + (" (still encrypted)." if kind == "self" else
+                                   " (same program, laid out by another tool)." if same_segments else ".")))
     elif kind == "elf":
         lay = elf_layout(head)
         same = [b for b in sup if lay and lay[0] == int(b["entry"], 16)
