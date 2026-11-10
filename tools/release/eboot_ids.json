@@ -1,0 +1,7 @@
+{
+ "comment": "One entry per build of the game's program file (EBOOT), in the shared list format: title_id, region, app_ver, size and sha256 of the decrypted EBOOT, status (tested: the port is built from it; unsupported: refused), self_size/self_sha256 of the disc's encrypted EBOOT.BIN; Toro adds title, entry and text_size (entry point and size of the code segment, for a decrypted file that is not a known copy). Hashes, sizes and ids only, read from the maintainer's own discs. Checked by tools/release/eboot_ids.py.",
+ "builds": [
+  {"title_id": "BCAS20087", "region": "Asian English", "app_ver": "01.00", "size": 11819744, "sha256": "d542197e6100879a8bf7e432825e692a35cc4f5e1c9c18906196a17647455e42", "status": "tested", "self_size": 11822176, "self_sha256": "3f2c906090b4316c213e4682d406368fccbb8197a476ded63b15d3d1c8576ce2", "title": "TORO ! Let's Party !", "entry": "0x854558", "text_size": "0x7feee0"},
+  {"title_id": "BCJS30034", "region": "Japanese", "app_ver": "01.00", "size": 12089928, "sha256": "b96e34be1674649e747213988ff277f3d16b9b50470129809fd7fdc58ba856c0", "status": "unsupported", "self_size": 12092360, "self_sha256": "6834f2eaa8bd37215c3a9a53f53beb12b0f6a34d6611c1a74c0d8ce4e900d340", "title": "トロともりもり", "entry": "0x894908", "text_size": "0x839ee0"}
+ ]
+}

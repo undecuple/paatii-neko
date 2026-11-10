@@ -13,6 +13,7 @@
 #    entry OPD at 0x854558 = {0x10230, 0x8790d0}), --overrides port/ppu_overrides.txt (patch 1018), --chunks 64
 #    (patch 3005) into work/recomp.
 # 4. lift_audit into work/analysis/lift_audit.log.
+# 0. First, tools/release/eboot_ids.py checks the EBOOT (and the disc's PARAM.SFO) against the known builds.
 # Needs work/bin/EBOOT.elf: the game's main program as a plain ELF, made from your own copy.
 set -euo pipefail
 echo 1000 > /proc/self/oom_score_adj 2>/dev/null || true   # first OOM victim, not the editor
@@ -24,6 +25,12 @@ OVR=port/ppu_overrides.txt
 CHUNKS="${TLP_LIFT_CHUNKS:-64}"
 [[ -f "$ELF" ]] || { echo "missing $ELF (put the plain ELF of your own EBOOT there first)" >&2; exit 1; }
 [[ -f "$OVR" ]] || { echo "missing $OVR" >&2; exit 1; }
+# Which build is this? (tools/release/eboot_ids.json): a wrong release, version or a still-encrypted file stops here;
+# an unknown copy of the right build only warns. The disc's PARAM.SFO is checked too when the disc folder is at
+# $TLP_DISC (default Game/, the folder that holds PS3_GAME).
+SFO="${TLP_DISC:-Game}/PS3_GAME/PARAM.SFO"; SFO_ARG=(); [[ -f "$SFO" ]] && SFO_ARG=(--sfo "$SFO")
+python3 "$ROOT/tools/release/eboot_ids.py" --eboot "$ELF" --need-elf "${SFO_ARG[@]}" ||
+  { echo "lift: stopped, the game files above are not the build the port is made from" >&2; exit 1; }
 
 "$ROOT/tools/ps3recomp-patched.sh"
 
