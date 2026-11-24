@@ -17,6 +17,7 @@
   "maintainers": [{"name": "undecuple", "link": "https://github.com/undecuple"}],
   "links": [
     {"label": "Project site", "url": "https://undecuple.github.io/paatii-neko/"},
+    {"label": "Releases", "url": "https://github.com/undecuple/paatii-neko/releases"},
     {"label": "Status", "url": "https://github.com/undecuple/paatii-neko/blob/main/docs/STATUS.md"},
     {"label": "Building", "url": "https://github.com/undecuple/paatii-neko#building"}
   ],

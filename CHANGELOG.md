@@ -5,7 +5,7 @@ below 1.0.0 are previews. The first one, v0.1.0, is a **source preview**: you bu
 the game, and no exe, game file or installer is shipped. It has been run only under Proton on Linux, never on real
 Windows. See [docs/BUILDING.md](docs/BUILDING.md) and [RELEASE-CRITERIA.md](docs/RELEASE-CRITERIA.md).
 
-## [Unreleased]
+## [0.1.0] - 2026-11-24
 
 ### Added
 - The recompiled game starts under Proton on Linux, opens a Direct3D 12 window and runs from the studio logos to the title screen and the main menu (Story, Game, Gallery, Extras, Options).
@@ -29,5 +29,5 @@ Windows. See [docs/BUILDING.md](docs/BUILDING.md) and [RELEASE-CRITERIA.md](docs
 
 ### Known gaps
 - Sound, the other minigames, Gallery text, Extras, Options, Japanese text, trophies and online features are untested or not implemented; see [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) and [docs/FEATURES.md](docs/FEATURES.md).
-- No installer or portable zip: the port is built from source. It has been run only under Proton on Linux, not on real Windows. The exe links `msvcrt.dll` and is built without Control Flow Guard; if Windows Exploit Protection forces it on, the exe may stop with error 0xC0000409 (untested).
-- The v0.1.0 source archive was unpacked and built end to end following [docs/BUILDING.md](docs/BUILDING.md) (2026-11-23); that build boots to the Story book under Proton. The speed figures in [docs/STATUS.md](docs/STATUS.md) are from an earlier build.
+- No installer or portable zip: the port is built from source. It has been run only under Proton on Linux, not on real Windows. The exe links `msvcrt.dll` and is built without Control Flow Guard; if Windows Exploit Protection forces it on, the exe may stop with error 0xC0000409 (likely: the Killzone 2 and 3 ports hit it with the same code shape; a fix is planned after v0.1.0).
+- The v0.1.0 source archive was unpacked and built end to end following [docs/BUILDING.md](docs/BUILDING.md) (2026-11-24); that build boots to the Story book under Proton. The speed figures in [docs/STATUS.md](docs/STATUS.md) are from an earlier build.
