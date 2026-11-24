@@ -20,7 +20,7 @@ other marks are used in this repository's own material.
 
 ## Screenshots
 
-Screenshots of the port running (in `docs/screenshots/`, each captioned in the README with what it shows) show the
+Screenshots of the port running (in `docs/screenshots/`, listed with captions in [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md); the README shows none) show the
 game's imagery, which belongs to its owners. They are shown only to document the progress of the port and were taken
 from the developer's own copy of the game.
 

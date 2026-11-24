@@ -1,0 +1,46 @@
+PPU: reservation registration is idempotent, so reused thread slots do not fill the registry.
+Toro's own patch (7xxx); candidate for upstream (the bug is upstream's, still in v0.19.0).
+What: ppu_resv_register takes a small lock, skips a context that is already registered, and publishes a new one
+with a full barrier before the count; more distinct contexts than the 128 places stop the process with a message.
+Why: thread contexts live in the fixed thread table (g_ppu_threads, 64 slots) and a finished thread's slot is reused,
+so the same context was registered again at every thread start. Toro restarts one worker in slot 4 about 30 times in
+its first 30 s (run tlp-pf-b: 47 starts, 12 slots), so the 128 places filled within minutes, and a slot first used
+after that never had its lwarx reservation broken by other threads' stwcx (ABA on the game's lock-free lists). With
+duplicates skipped the registry holds at most 65 contexts. Same fix as found in another port (thanks to its
+maintainer); written here with the file's own Interlocked primitives.
+--- a/runtime/ppu/ppu_loader.cpp	2026-11-09 19:19:01.431779523 -0600
++++ b/runtime/ppu/ppu_loader.cpp	2026-11-09 19:19:01.432779546 -0600
+@@ -824,6 +824,12 @@
+ #define PPU_RESV_INVALID 0x100000000ull   /* out of (uint32_t) ea range */
+ static ppu_context* g_resv_ctxs[PPU_RESV_MAX];
+ static volatile LONG g_resv_ctx_n = 0;
++/* Toro patch 7025: registration is serialized and idempotent. Thread contexts live in the fixed thread table
++ * (g_ppu_threads, PPU_THREAD_MAX 64), so a slot reused by a new thread hands the same context in again: counting
++ * every start filled the 128 places after ~127 starts (Toro restarts one worker ~30 times in its first 30 s), and a
++ * context first registered after that never had its reservation broken by other threads' stores. With duplicates
++ * skipped the list holds at most 65 contexts (64 slots + the main thread); a real overflow stops loudly. */
++static volatile LONG g_resv_reg_lock = 0;
+ /* Sharded by address: a single global lock convoyed all stwcx (workers spinning
+  * on a descheduled holder -> loader too slow to finish jobs). Shard by the
+  * 16-byte-block of ea so unrelated structures never serialize; same-structure
+@@ -840,8 +846,18 @@
+ extern "C" void ppu_resv_register(ppu_context* c)
+ {
+     if (g_resv_store_active < 0) g_resv_store_active = getenv("PPU_RESV_STORE") ? 1 : 0;
+-    long i = _InterlockedExchangeAdd(&g_resv_ctx_n, 1);
+-    if (i < PPU_RESV_MAX) g_resv_ctxs[i] = c;
++    while (_InterlockedCompareExchange(&g_resv_reg_lock, 1, 0)) YieldProcessor();
++    const long n = g_resv_ctx_n;
++    for (long i = 0; i < n; i++)
++        if (g_resv_ctxs[i] == c) { _InterlockedExchange(&g_resv_reg_lock, 0); return; }
++    if (n >= PPU_RESV_MAX) {
++        fprintf(stderr, "[ppu] reservation registry full: %d distinct thread contexts\n", PPU_RESV_MAX);
++        fflush(stderr);
++        abort();
++    }
++    g_resv_ctxs[n] = c;
++    _InterlockedExchange(&g_resv_ctx_n, n + 1);   /* full barrier: the slot is written before the count shows it */
++    _InterlockedExchange(&g_resv_reg_lock, 0);
+ }
+ /* Where every guest thread is, as a GUEST address.
+  *

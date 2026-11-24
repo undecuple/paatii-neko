@@ -2,8 +2,8 @@
 
 Criteria met: no
 
-パーティー猫！ (Paatii Neko!) has no release and no release date. Versions below 1.0.0 are previews: **v0.x =
-preview**, published as GitHub pre-releases, each saying what is missing. **v1.0.0 = every minigame and the Story mode
+パーティー猫！ (Paatii Neko!) has no release and no release date. The first preview, v0.1.0, is a source preview. Versions below 1.0.0 are previews: **v0.x =
+preview** (tag name: `v` plus the version, such as `v0.1.0`), published as GitHub pre-releases, each saying what is missing. **v1.0.0 = every minigame and the Story mode
 playable start to finish at about the game's own 30 frames per second.** The first release that calls itself
 **playable** waits for every point of the second list. Booting to a title screen does not count. This list, not a
 date, is what a release is measured against.
@@ -14,13 +14,14 @@ The line `Criteria met:` above says `yes` only when every point of the v1.0.0 li
 ## Gates for a v0.x tag (preview)
 
 1. **CI green** on the commit that is tagged.
-2. **A build that a player can start:** the release names which way of getting the port it offers. Today there is no
-   installer and no portable zip; see [BUILDING.md](BUILDING.md).
+2. **A way to get the port:** the release names which way it offers. For v0.1.0 it is source: one source archive
+   that includes the pinned `third_party/ps3recomp`, built by the player from their own copy of the game (the exe
+   cannot be shipped or built in CI). There is no installer and no portable zip; see [BUILDING.md](BUILDING.md).
 3. **Tested on real Windows** before a release says it runs there. Today the port has only been run under Proton on
    Linux.
 4. **Known issues listed** in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
-5. **Checksums published** beside every release file.
-6. **One version string** everywhere it appears (checked by `tools/release/release.py`).
+5. **Checksums published** beside every release file: for v0.1.0, a `SHA256SUMS` file for the attached source archive.
+6. **One version string** (the tag is `v` plus the CMake version) everywhere it appears (checked by `tools/release/release.py`).
 7. **Tags are never moved**; a fix is a new tag.
 8. **Published as a pre-release** while the version is 0.x.
 9. **A changelog entry** for the version in [CHANGELOG.md](../CHANGELOG.md).

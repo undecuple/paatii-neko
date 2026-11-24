@@ -11,7 +11,9 @@ here is shipped or downloaded by this project.
 |---|---|---|
 | The disc's files, as a folder | The folder that holds `PS3_GAME`, with the disc's files in it as they are laid out on the disc (`PS3_GAME/PARAM.SFO`, `PS3_GAME/USRDIR/...`) | The game folder you give when you run the exe (see below) |
 | The game's main program, decrypted to a plain ELF | A file named `EBOOT.elf`, made from your own copy of the game. A plain ELF starts with the letters `ELF`; an encrypted file does not | For the build: `work/bin/EBOOT.elf` in the repository. For a run: `<game folder>/PS3_GAME/USRDIR/EBOOT.elf` |
-| The PS3 system fonts (for text) | The TrueType files `SCE-PS3-*.TTF` from your own console's firmware | A folder named by the `KZ3_FONT_DIR` environment variable. Text needs them |
+| The PS3 system fonts (for text) | The TrueType files `SCE-PS3-*.TTF` from your own console's firmware | A folder named by the `KZ3_FONT_DIR` environment variable. Text needs them. (The name comes from the Killzone 3 port this code is shared with. It is the one players need; `KZ3_FONT_HAN` and `KZ3_FONT_FALLBACK_DIR` are optional.) |
+
+The 12 SPU job programs the build also needs are not files you bring: they are written by the game itself on a first run (see [BUILDING.md](BUILDING.md#lifting-the-spu-code)).
 
 The decrypted EBOOT is used twice: the build reads it from `work/bin/EBOOT.elf` and translates its code to C, and the
 exe reads the same file when you run it. The rest of the disc's files are only needed to run the game, not to build.

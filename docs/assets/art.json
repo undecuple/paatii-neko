@@ -1,6 +1,6 @@
 {
  "format": 1,
- "generator_sha256": "1c7a3b3241d9fdfcb05dd8ef25251d5e1f81aa7b887cbaf335d5dffff46f8d64",
+ "generator_sha256": "04e8d1c12a56116f8aec3a7d54570d0960f5544160b52d5223d5b4b6fa496b78",
  "fonts_sha256": {
   "Baloo2[wght].ttf": "d47a6852548059b1db49a1319d06d499d546c3fa2237cf9eee9c43c8abb025c2",
   "LilitaOne-Regular.ttf": "f5b641c45c69d772ee4eda687bc9fda411d5cad6b0b45371491da4580cbc8d59",
@@ -15,24 +15,32 @@
     1280,
     320
    ],
-   "bytes": 179511,
-   "sha256": "0d1e42812b7eacd6772e8846a87a7fbeff62d30f5475309ffed72d0fea880bca"
+   "bytes": 189205,
+   "sha256": "f1e89c500dd1eb1e3229fee26699f7b424619e9b714e4e4dd994f280d8786b8a"
   },
   "banner@2x.png": {
    "size": [
     2560,
     640
    ],
-   "bytes": 377596,
-   "sha256": "b106fb377d6df7a79625f5921e14fea3f3d99e6c9940a4a28cf9d489230036f0"
+   "bytes": 392968,
+   "sha256": "eb155560319641de04bb8a1ea4e228b30bffb8392ded9655146153c1d5ac4ae3"
+  },
+  "divider.svg": {
+   "size": [
+    1200,
+    24
+   ],
+   "bytes": 5860,
+   "sha256": "a71b6da3d251984189a6e070fd6aa677e94b4e118a009ba528d33597610364ff"
   },
   "social-preview.png": {
    "size": [
     1280,
     640
    ],
-   "bytes": 112386,
-   "sha256": "56ac003c4afabbbb4b47b65ac80f12e1826e694d8d8a50a932b032dc1971868a"
+   "bytes": 115557,
+   "sha256": "9aa99d515293ff299546b0ce2cd4a44b51329fcb3c544b17e592771b34edd2d8"
   }
  }
 }

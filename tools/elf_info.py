@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Inventory of a decrypted PS3 PPU ELF (EBOOT.elf).
 
-    elf_info.py ELF [--imports FILE.tsv] [--spu-dir DIR]
+    elf_info.py ELF [--imports FILE.tsv] [--spu-dir DIR] [--job-dir DIR]
 
 Prints: header, program headers, sections, OPD (function descriptor) count, imported
 libraries with function counts (from the PRX stub table), and embedded SPU ELF images.
 --imports writes library<TAB>nid rows; --spu-dir writes each embedded SPU ELF out.
+--job-dir writes every SPURS jobchain job binary as spujob_<FP16HEX>_<size>.bin, the form the runtime's
+SPU_DUMP_MISS dump makes and tools/spu/lift_spu.sh reads (work/spu-miss). The jobs are not ELFs; the title
+keeps a table of 12-byte entries {u32 descriptor ptr, u32 eaBinary, u32 sizeBinary} in .data (BCAS20087: va
+0xa20b24, 12 entries) and the binaries sit in .rodata at eaBinary. The runtime fingerprints eaBinary for
+sizeBinary rounded up to 16 bytes (FNV-1a 64, spu_workload_fingerprint), so the same is done here.
 
 PS3 specifics used:
   - ELF64 big-endian, e_machine 21 (PPC64). Pointers inside data are 32-bit.
@@ -104,11 +109,67 @@ class Elf:
             i += 4
 
 
+FNV_OFF, FNV_PRIME = 1469598103934665603, 1099511628211
+
+
+def fnv1a64(b):
+    """runtime/spu/spu_workload.c spu_workload_fingerprint."""
+    h = FNV_OFF
+    for x in b:
+        h = ((h ^ x) * FNV_PRIME) & 0xFFFFFFFFFFFFFFFF
+    return h
+
+
+def job_tables(e, min_run=8):
+    """Find runs of {ptr, eaBinary, sizeBinary} entries; return [(table_va, [(ea, size16), ...])]."""
+    loads = [p for p in e.ph if p["type"] == 1]
+    img_end = max(p["va"] + p["filesz"] for p in loads)
+
+    def valid(ptr, ea, sz):
+        o = e.va2off(ea)
+        return (e.va2off(ptr) is not None and ea % 16 == 0 and 0x400 <= sz <= 0x40000 and o is not None
+                and e.va2off(ea + sz - 1) is not None and ea + sz <= img_end and ptr % 8 == 0)
+
+    out = []
+    for p in loads:
+        if p["flags"] & 1:  # executable: code, not tables
+            continue
+        data = e.d[p["off"]:p["off"] + p["filesz"]]
+        i, n = 0, len(data) - 12
+        while i < n:
+            run = []
+            j = i
+            while j + 12 <= len(data):
+                ptr, ea, sz = struct.unpack(">III", data[j:j + 12])
+                if not valid(ptr, ea, (sz + 15) & ~15):
+                    break
+                run.append((ea, (sz + 15) & ~15))
+                j += 12
+            if len(run) >= min_run:
+                out.append((p["va"] + i, run))
+                i = j
+            else:
+                i += 4
+    return out
+
+
+def spu_jobs(e):
+    """Every job binary found through the job tables: {fingerprint: (size, bytes)}."""
+    jobs = {}
+    for _, run in job_tables(e):
+        for ea, sz in run:
+            o = e.va2off(ea)
+            b = e.d[o:o + sz]
+            jobs.setdefault(fnv1a64(b), (sz, b))
+    return jobs
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("elf")
     ap.add_argument("--imports")
     ap.add_argument("--spu-dir")
+    ap.add_argument("--job-dir")
     a = ap.parse_args()
     e = Elf(a.elf)
     print(f"type {e.type:#x}  machine {e.machine}  entry {e.entry:#x}  size {len(e.d)}")
@@ -137,6 +198,12 @@ def main():
         os.makedirs(a.spu_dir, exist_ok=True)
         for off, sz in spus:
             open(os.path.join(a.spu_dir, f"spu_{off:08x}.elf"), "wb").write(e.d[off:off + sz])
+    if a.job_dir:
+        jobs = spu_jobs(e)
+        os.makedirs(a.job_dir, exist_ok=True)
+        for fp, (sz, b) in sorted(jobs.items()):
+            open(os.path.join(a.job_dir, f"spujob_{fp:016X}_{sz}.bin"), "wb").write(b)
+        print(f"SPURS job binaries: {len(jobs)}")
 
 
 if __name__ == "__main__":

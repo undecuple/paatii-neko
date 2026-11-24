@@ -16,8 +16,15 @@ HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 
 NAME = "Paatii Neko!"
-PARA2 = ("You need your own copy of the game; none of it is included or downloaded. "
-         "See the README for what works, what goes online and how to build it.")
+SOURCE = ("This is a source preview. It has no binaries and no installer. You build it from your own copy of the game: "
+          "clone with `--recursive` or use the attached source archive (with SHA256SUMS), then follow docs/BUILDING.md.")
+TESTED = ("Tested only under Proton on Linux; not tested on real Windows. On real Windows the exe may stop with "
+          "0xC0000409 if Exploit Protection forces Control Flow Guard on, because the SPU runtime uses `_setjmp` and "
+          "`longjmp`. The Killzone 2 and 3 ports hit this with the same code shape, so it is likely; a fix is planned "
+          "after v0.1.0.")
+PARA2 = ("You need your own copy of the game (BCAS20087) and its decrypted EBOOT; none of it is included or "
+         "downloaded. See the README for what works, what goes online and how to build it. Known problems: "
+         "docs/KNOWN_ISSUES.md. Privacy: docs/PRIVACY.md. Licences: licenses/README.md.")
 
 
 class NotesError(Exception):
@@ -65,7 +72,7 @@ def build(text, version):
     out = [f"{first}. New in {version}:", ""]
     for name, items in groups:
         out += [f"**{name}**", ""] + items + [""]
-    out += ["See CHANGELOG.md for the full list.", "", PARA2]
+    out += ["See CHANGELOG.md for the full list.", "", SOURCE, "", TESTED, "", PARA2]
     return "\n".join(out) + "\n"
 
 

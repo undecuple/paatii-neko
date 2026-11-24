@@ -24,7 +24,7 @@ LOCKS="${TLP_LOCK_DIR:-$(cat "$MAINC/.tlp-lockdir" 2>/dev/null || echo "$MAINC/w
 # Refuse a patched toolkit older than the patch set (TLP_ALLOW_STALE_PATCHES=1 overrides).
 [[ -f "$PT/CMakeLists.txt" ]] || { echo "build-tlp: no $PT: run tools/ps3recomp-patched.sh first" >&2; exit 3; }
 if [[ "${TLP_ALLOW_STALE_PATCHES:-0}" != 1 ]]; then
-  want="$(cat "$ROOT"/port/patches/*.patch | sha256sum | cut -c1-16)-$(git -C "$ROOT/third_party/ps3recomp" rev-parse --short HEAD 2>/dev/null)"
+  want="$(cat "$ROOT"/port/patches/*.patch | sha256sum | cut -c1-16)-$(git -C "$ROOT/third_party/ps3recomp" rev-parse --short=12 HEAD 2>/dev/null || cut -c1-12 "$ROOT/third_party/ps3recomp/.tlp-commit" 2>/dev/null || echo none)"
   have="$(cat "$PT/.tlp-patchset" 2>/dev/null || true)"
   [[ "$have" == "$want" ]] || { echo "build-tlp: $PT is stale ($have, want $want): run tools/ps3recomp-patched.sh first" >&2; exit 3; }
 fi

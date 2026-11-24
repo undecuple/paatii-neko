@@ -1,7 +1,10 @@
-# Toro Lets Party port: from an earlier port by the same author (names swapped). From KZ3 78bf574 port/kz3/CMakeLists.txt, KZ3-only parts removed (PSARC VFS, KZ3 HLE glue,
-# logger, port/spu and port/net subprojects).
-# Killzone 3 port host. Based on ps3recomp templates/project (MIT licence: third_party/ps3recomp/LICENSE).
-# Lifted code: work/recomp (tools/lift.sh, not committed). Toolkit: third_party/ps3recomp (pinned).
+# Toro Lets Party port host: builds tlp.exe (Windows x64, MinGW-w64 cross build; see tools/build-tlp.sh).
+# The exe is made of three parts: the lifted game code (work/recomp, written by tools/lift.sh and never committed),
+# the ps3recomp runtime from the patched copy (work/ps3recomp-patched, made by tools/ps3recomp-patched.sh from the
+# pinned submodule third_party/ps3recomp plus port/patches), and this directory's glue (main.cpp, hle_tlp.cpp,
+# stubs.cpp). The SPU workloads are lifted by tools/spu/lift_spu.sh.
+# Origin: the host is adapted from an earlier PS3 port's host (credits: NOTICE.md), which is based on the ps3recomp
+# templates/project (MIT licence: third_party/ps3recomp/LICENSE).
 cmake_minimum_required(VERSION 3.20)
 project(tlp
     VERSION 0.1.0

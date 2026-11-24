@@ -54,7 +54,7 @@ fi
 # patch set, env, Proton, fixtures and cache state before the run, and the outcome from the log after it. It never
 # fails a run; tools/runcmp.py reads it before two runs are compared.
 DISPLAY_KIND=xvfb; [[ ${REAL:-0} -eq 1 ]] && DISPLAY_KIND=real
-if command -v python3 >/dev/null; then
+if command -v python3 >/dev/null && [[ -f "$ROOT/tools/runprov.py" ]]; then
   python3 "$ROOT/tools/runprov.py" start "$RUN" --exe "$RUN/app/$(basename "$EXE")" --seconds "$SECONDS_RUN" \
     --display "$DISPLAY_KIND" --proton "$PROTON_DIR" --root "$ROOT" || true
 fi
@@ -86,7 +86,7 @@ set +e
   bash "$ROOT/tools/proton-inner.sh" "$PROTON_DIR" "$RUN" "$SECONDS_RUN" "$SHOT" "$(basename "$EXE")" "$@"
 RC=$?
 set -e
-if command -v python3 >/dev/null; then
+if command -v python3 >/dev/null && [[ -f "$ROOT/tools/runprov.py" ]]; then
   python3 "$ROOT/tools/runprov.py" finish "$RUN" --root "$ROOT" || true
 fi
 # An empty fontset makes every text box blank while the rest of the frame looks right: say so after the run.
