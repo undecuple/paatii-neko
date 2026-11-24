@@ -27,20 +27,21 @@
 <section id="status" class="card torn">
 <h2><span class="num" aria-hidden="true">1</span> Status</h2>
 <div class="note latest"><h3>Latest</h3>
-<p>No release yet: the port is built from source. The Story mode plays by hand into episode 2 at about 29 frames/s in its room scene (target 30), and the first minigame plays a full round; the other minigames and sound are unchecked. Details: <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/STATUS.md">docs/STATUS.md</a>; what a release must meet to be called playable: <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/RELEASE-CRITERIA.md">docs/RELEASE-CRITERIA.md</a>. How it works: <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/HOW-IT-WORKS.md">docs/HOW-IT-WORKS.md</a>.</p>
-<p class="small">As of 2026-11-03, on Windows x64 under Proton on Linux (Intel Core i7-12700KF, NVIDIA GeForce RTX 4060, driver 595.112.07, GE-Proton11-7), tested with scripted keyboard input and hand play. Not yet run on real Windows.</p>
+<p>A source preview, version 0.1.0. The Story mode plays by hand into episode 2 at 28.9 frames/s in its room scene (target 30), and the first minigame plays a full round; the other minigames and sound are unchecked. These figures are from a build of 2026-11-02, before later changes; they have not been measured again for v0.1.0. Details: <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/STATUS.md">docs/STATUS.md</a>; what a release must meet to be called playable: <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/RELEASE-CRITERIA.md">docs/RELEASE-CRITERIA.md</a>. How it works: <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/HOW-IT-WORKS.md">docs/HOW-IT-WORKS.md</a>.</p>
+<p class="small">As of 2026-11-23 (rows were not all re-checked on this date; the pad row dates from 2026-10-21 and the speed row from 2026-11-02), on Windows x64 under Proton on Linux (Intel Core i7-12700KF, NVIDIA GeForce RTX 4060, driver 595.112.07, GE-Proton11-7), tested with scripted keyboard input and hand play. Not yet run on real Windows. v0.1.0 is a source preview: you build it yourself.</p>
 </div>
 <dl class="status">
 <div><dt>Boot, intro, menus</dt><dd>Studio logos, the title screen with its 3D background, and the main menu. Text needs the PS3 system fonts from your own console&#x27;s firmware.</dd></div>
 <div><dt>Story mode</dt><dd>The memory book, the real-time 3D room scene and the start of episode 2, played by hand.</dd></div>
-<div><dt>Minigames</dt><dd>Game mode opens; the first minigame, Flap your wings! Chick!, plays a full round to its score screen. The others have not been played yet.</dd></div>
+<div><dt>Minigames</dt><dd>Game mode opens; the first minigame, Flap your wings! Chick!, plays a full round to its score screen. The others have not been played through.</dd></div>
 <div><dt>Input</dt><dd>Keyboard, with the game&#x27;s original controls, and pads through SDL3: a DualShock 4 was played by hand (2026-10-21), other pads are untested. On a pad without a motion sensor, or on the keyboard, the right stick stands in for motion; the minigame above scores with it.</dd></div>
 <div><dt>Saves</dt><dd>The game writes its save. Loading it after a restart has not been checked.</dd></div>
-<div><dt>Sound</dt><dd>Not checked (test runs have audio off).</dd></div>
+<div><dt>Sound</dt><dd>Never heard: test runs have audio off.</dd></div>
 <div><dt>Online</dt><dd>Not supported. See <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/PRIVACY.md">PRIVACY.md</a>.</dd></div>
-<div><dt>Installer and portable zip</dt><dd>None yet: the port is built from source.</dd></div>
+<div><dt>Installer and portable zip</dt><dd>None: the port is built from source (source preview). The v0.1.0 source archive, built end to end by docs/BUILDING.md, boots to the Story book under Proton (2026-11-23).</dd></div>
+<div><dt>Real Windows</dt><dd>Not tested. The exe links <code>msvcrt.dll</code>, is built without Control Flow Guard, and may stop with 0xC0000409 if Windows forces it on (likely: the Killzone 2 and 3 ports hit it with the same code shape; untested here). See <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/KNOWN_ISSUES.md">KNOWN_ISSUES.md</a>.</dd></div>
 <div><dt>Performance</dt><dd>Shaders are cached on disk (in <code>scratch/</code>); stalls have not been measured.</dd></div>
-<div><dt>Speed</dt><dd>Title screen 26.8 frames per second on average and the room scene 28.9 (the game&#x27;s own rate is 30), over a 14 s and a 45 s window, on a build of the development tree of 2026-11-02 on the hardware above. Book and minigame not measured on that build.</dd></div>
+<div><dt>Speed</dt><dd>Title screen 26.8 frames per second on average and the room scene 28.9 (the game&#x27;s own rate is 30), over a 14 s and a 45 s window, on a build of the development tree of 2026-11-02 on the hardware above. Book and minigame not measured on that build. Earlier build: it predates the frame-timing fix (patch 7027) and the blend colour fix (patch 2006); the current build has not been re-measured.</dd></div>
 <div><dt>Known bugs</dt><dd>Some menu labels and titles are cut off; paging back and forth in the Story book can overlap the text with the page images, and an episode may not reopen after paging. All of them: <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/KNOWN_ISSUES.md">KNOWN_ISSUES.md</a>.</dd></div>
 </dl>
 <p class="counts">Feature by feature (24 features of the PS3 game): <span class="st st-ok">Works</span>&nbsp;<b>8</b> <span class="st st-part">Partial</span>&nbsp;<b>9</b> <span class="st st-unk">Not yet verified</span>&nbsp;<b>3</b> <span class="st st-no">Not yet</span>&nbsp;<b>4</b> <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/FEATURES.md">FEATURES.md</a>.</p>
@@ -49,18 +50,18 @@
 <div class="pair">
 <section id="online" class="card torn notebook">
 <h2><span class="num" aria-hidden="true">2</span> What goes online</h2>
-<p>Not checked yet. The game has online features, and the port includes ps3recomp&#x27;s network layer (real sockets and HTTP), so it may try to connect. Every test run so far had no network access. None of the game&#x27;s online features are supported, and the port has no update check, crash reporting or other online feature of its own. Until this is checked, run the port without network access if that matters to you.</p>
+<p>Not checked yet. The game has online features, and the port includes ps3recomp&#x27;s network layer (real sockets and HTTP), so it may try to connect. Every test run so far had no network access. None of the game&#x27;s online features are supported, and the port has no update check, crash reporting or other online feature of its own. Until this is checked, run the port without network access if that matters to you. One way to do that: the repository&#x27;s <code>tools/sandbox.sh</code> runs a command with no network (on Linux, with bubblewrap), unless you pass <code>--net</code>; or use a firewall rule for the exe or a machine with no network connection. Online code in ps3recomp is opt-in through its own settings, and this project has done no online work.</p>
 </section>
 <section id="data" class="card torn notebook">
 <h2><span class="num" aria-hidden="true">3</span> Where your data goes</h2>
 <p>Everything the port writes goes into the folder it runs from:</p>
 <ul><li><code>gamedata/</code>: the PS3 hard-disk area the game sees, saves included.</li><li><code>cache/</code>: decrypted game data files, made from your own disc as they are read.</li><li><code>scratch/</code>: the shader cache and timing logs.</li></ul>
-<p>Test runs found nothing written anywhere else by the port itself; the graphics driver may keep its own shader cache. To remove the port, delete that folder.</p>
+<p>Test runs found nothing written anywhere else by the port itself; the graphics driver may keep its own shader cache. To remove the port, delete that folder. ps3recomp may keep a shared settings file of its own outside this folder; this has not been checked.</p>
 </section>
 </div>
 <section id="getting" class="card torn">
 <h2><span class="num" aria-hidden="true">4</span> Getting it</h2>
-<p>There is no release, installer or download yet. An installer that builds the port on your PC is planned before the first release; until then you build it yourself.</p>
+<p>v0.1.0 is a <strong>source preview</strong> (a GitHub pre-release). It ships no exe, installer or game file; the exe is built on your PC from your own copy of the game, so it cannot be built for you. The release has one source archive, which includes the pinned <code>third_party/ps3recomp</code> submodule (GitHub&#x27;s automatic zip does not), and a <code>SHA256SUMS</code> file. No fresh build from that archive has been run end to end yet, so the results below are what the steps are meant to give, as described in <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/BUILDING.md">docs/BUILDING.md</a>.</p>
 <div class="reqs">
 <div class="note"><h3>The game</h3>
 <ul><li><strong>Your own disc of TORO ! Let&#x27;s Party !</strong>: BCAS20087, version 01.00 (the Asian English release), as a folder that holds <code>PS3_GAME</code>. Other regions, including the Japanese original BCJS30034, are not what the port is built for.</li><li><strong>The game&#x27;s main program, decrypted from your own copy</strong>, as <code>EBOOT.elf</code>. This project gives no decryption tools or instructions; see the PS3 emulator RPCS3 and its documentation.</li><li><strong>The PS3 system fonts</strong> (<code>SCE-PS3-*.TTF</code>) from your own console&#x27;s firmware, for the game&#x27;s text.</li></ul>
@@ -73,7 +74,7 @@
 <ul><li>Windows x64 with a Direct3D 12 GPU, or Linux with Proton.</li><li>Tested setup: Intel Core i7-12700KF, NVIDIA GeForce RTX 4060 (driver 595.112.07), GE-Proton11-7. Real Windows has not been tried yet. No minimum or recommended hardware is known yet.</li></ul>
 </div>
 </div>
-<p>What each must contain and where it goes: <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/GETTING-FILES.md">docs/GETTING-FILES.md</a>; hardware and the rest: <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/requirements.md">docs/requirements.md</a>. This project ships none of them.</p>
+<p>What each must contain and where it goes: <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/GETTING-FILES.md">docs/GETTING-FILES.md</a>. This project ships none of the game files.</p>
 <p class="small">Build steps: <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/BUILDING.md">BUILDING.md</a>. Found a problem? Use the <a href="https://github.com/undecuple/paatii-neko/issues/new/choose">issue forms</a> after reading the <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/KNOWN_ISSUES.md">known issues</a>.</p>
 </section>
 <section id="how" class="card torn">
@@ -86,8 +87,9 @@
 <h2><span class="num" aria-hidden="true">6</span> Roadmap</h2>
 <h3>To do</h3>
 <p>In order of priority. No dates: each step is done when it is checked in a run.</p>
-<ol><li><strong>Minigames:</strong> the remaining minigames, one by one, with the game&#x27;s original controls, each played to its score screen.</li><li><strong>Sound and saves:</strong> music and effects checked by ear; a save loaded again after a restart.</li><li><strong>Speed:</strong> the game&#x27;s own 30 frames per second in every mode, measured with the hardware and build named.</li><li><strong>Windows:</strong> a test on real Windows, then an installer that builds the port on the player&#x27;s PC.</li><li><strong>Later:</strong> a native Linux build (Vulkan), and optional display features such as an upscaler.</li></ol>
+<ol><li><strong>Windows:</strong> a test on real Windows, including with Exploit Protection forcing Control Flow Guard on (see <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/KNOWN_ISSUES.md">KNOWN_ISSUES.md</a>). Until then the port is only known to run under Proton on Linux.</li><li><strong>Minigames:</strong> the remaining minigames, one by one, with the game&#x27;s original controls, each played to its score screen.</li><li><strong>Sound and saves:</strong> music and effects checked by ear; a save loaded again after a restart.</li><li><strong>Speed:</strong> the game&#x27;s own 30 frames per second in every mode, measured with the hardware and build named.</li><li><strong>Easier building:</strong> fewer manual steps, in particular for the SPU programs that today need one game run first (see <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/BUILDING.md">BUILDING.md</a>), and later an installer that builds the port on the player&#x27;s PC.</li><li><strong>Later:</strong> a native Linux build (Vulkan), and optional display features such as an upscaler.</li></ol>
 <p>Any gameplay change stays optional. What a release must meet: <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/RELEASE-CRITERIA.md">RELEASE-CRITERIA.md</a>.</p>
+<ul><li>Export of models and scenes to common formats, and later import back into the game, as a base for modding frameworks. Exports stay on the player&#x27;s machine; extracted assets are never committed. Import is not designed yet.</li><li>Fuller keyboard and mouse support. The keyboard already plays as the pad (<a href="https://github.com/undecuple/paatii-neko/blob/main/docs/FEATURES.md">FEATURES.md</a>); to add: rebindable keys, mouse movement as a stand-in for the motion sensor and stick, and the mouse in menus where the game&#x27;s own cursor allows. Prompts follow the last input device, drawn in the game&#x27;s style.</li><li>VR support (opt-in display mode; feasibility unassessed, the game renders one fixed camera per minigame).</li><li>Wide and ultrawide displays (21:9, 32:9). Today the game&#x27;s 16:9 frame is shown as-is; options: pillarbox by default, then a wider projection where a minigame&#x27;s scene and HUD hold up (an enhancement, opt-in per minigame).</li></ul>
 <p class="small"><a href="https://github.com/undecuple/paatii-neko/blob/main/docs/ROADMAP.md">ROADMAP.md</a></p>
 </section>
 <section id="friends" class="card torn">
@@ -100,7 +102,7 @@
 </section>
 <section id="made" class="card torn">
 <h2><span class="num" aria-hidden="true">9</span> How it was made</h2>
-<p>This project is developed by one person with AI coding agents, with the maintainer reviewing and signing off their work: <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/AI.md">docs/AI.md</a>.</p>
+<p>This project is developed by one person with AI coding agents, with the maintainer setting the goals, reviewing and signing off their work. The agents read the reference material, write and test patches, tools and documentation, and run builds and tests; the game&#x27;s files are handled only in a sandbox with no network access. Status claims are dated and say how they were checked. No game art, sound or text is generated or altered. Full description: <a href="https://github.com/undecuple/paatii-neko/blob/main/docs/AI.md">docs/AI.md</a>.</p>
 </section>
 <section id="licence" class="card torn">
 <h2><span class="num" aria-hidden="true">10</span> Licence and credits</h2>

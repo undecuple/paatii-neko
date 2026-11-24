@@ -389,14 +389,14 @@ def render(root, problems):
     w("</div>\n")
 
     # 5. getting it + requirements
-    getting = section(readme, "Getting started") or ""
+    getting = section(readme, "Download and play") or ""
     w("<section id=\"getting\" class=\"card torn\">\n" + head(4, "Getting it"))
-    first = find_para(getting, "There is no release", f"{README} (Getting started)", problems)
+    first = find_para(getting, "v0.1.0 is a", f"{README} (Download and play)", problems)
     w(f"<p>{inline(first)}</p>\n<div class=\"reqs\">\n")
     for title, html_ in req_sections(root, problems):
         w(f"<div class=\"note\"><h3>{esc(title)}</h3>\n{html_}</div>\n")
     w("</div>\n")
-    each = find_para(getting, "What each must contain", f"{README} (Getting started)", problems)
+    each = find_para(getting, "What each must contain", f"{README} (Download and play)", problems)
     w(f"<p>{inline(each)}</p>\n<p class=\"small\">Build steps: <a href=\"{REPO}/blob/main/docs/BUILDING.md\">BUILDING.md</a>. "
       f"Found a problem? Use the <a href=\"{REPO}/issues/new/choose\">issue forms</a> after reading the "
       f"<a href=\"{REPO}/blob/main/docs/KNOWN_ISSUES.md\">known issues</a>.</p>\n</section>\n")

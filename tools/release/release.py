@@ -7,12 +7,15 @@ Checks everything first and writes nothing if any part disagrees: the version is
 suffixes) and not older than the current one; CHANGELOG.md exists and has an [Unreleased] section with items (it is
 never created here); the release notes build; the .recomp.json check (recomp_card.py) passes. Then it bumps the
 version marks (bump_version.py), turns [Unreleased] into `## [X.Y.Z] - DATE`, writes work/release/notes-X.Y.Z.md and
-checks that the marks agree. Every release is a GitHub pre-release until 1.0.0. No network, no git.
+checks that the marks agree. Every release is a GitHub pre-release until 1.0.0. It refuses without
+docs/KNOWN_ISSUES.md and when the local tag vX.Y.Z already exists, and prints the tag to create. No network;
+git is only asked for the tag list.
 """
 import argparse
 import datetime
 import pathlib
 import re
+import subprocess
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -24,6 +27,15 @@ import release_notes  # noqa: E402
 ROOT = HERE.parents[1]
 
 
+def tag_exists(root, version):
+    """True when the local repo at root already has the tag v<version> (False without git or outside a repo)."""
+    try:
+        r = subprocess.run(["git", "-C", str(root), "tag", "--list", f"v{version}"], capture_output=True, text=True)
+    except OSError:
+        return False
+    return r.returncode == 0 and bool(r.stdout.strip())
+
+
 def plan(root, version, date, sfo=None, use_sfo=True):
     """(errors, edits, notes text). Nothing is written."""
     if bump_version.parse(version) is None:
@@ -33,6 +45,10 @@ def plan(root, version, date, sfo=None, use_sfo=True):
     if not (root / "CHANGELOG.md").is_file():
         return ["CHANGELOG.md does not exist; create it with an [Unreleased] section first (this tool never does)"], {}, ""
     errors = []
+    if not (root / "docs" / "KNOWN_ISSUES.md").is_file():
+        errors.append("docs/KNOWN_ISSUES.md does not exist; the release notes link it")
+    if tag_exists(root, version):
+        errors.append(f"the tag v{version} already exists locally; a tag is never moved, use the next version")
     try:
         if bump_version.parse(version) < bump_version.parse(bump_version.current_version(root)):
             errors.append(f"{version} is older than the current {bump_version.current_version(root)}")
@@ -66,6 +82,7 @@ def main(argv=None):
         print("release: stopped, nothing written", file=sys.stderr)
         return 1
     out = root / "work" / "release" / f"notes-{a.version}.md"
+    print(f"expected tag: v{a.version}")
     for rel in sorted(changed):
         print(("would change " if a.dry_run else "changed ") + rel)
     if a.dry_run:

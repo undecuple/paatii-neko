@@ -28,7 +28,7 @@ holds none of it: everything is built on your PC from your own copy of the game.
   makes a fresh copy of the pinned ps3recomp in `work/ps3recomp-patched` and applies every patch in order. It only
   rewrites files whose content changed, so a build recompiles only what a patch really changed. Both the lift and
   the build use that copy.
-- **`port/tlp/`** is the port's own glue: the program's `main`, the replacements for system functions the game needs,
+- **`port/tlp/`** is the port's own glue: the program's `main` (`main.cpp`), the replacements for system functions the game needs,
   and the settings the port turns on by default.
 - **`port/ppu_overrides.txt`** lists PPU functions that the host replaces; it is empty today.
 - **`tools/`** has the lift, build, sandbox and Proton test scripts, and the two inspection tools for your own files
@@ -40,8 +40,8 @@ holds none of it: everything is built on your PC from your own copy of the game.
 2. **PPU lift.** `tools/lift.sh` runs ps3recomp's loader, function finder and lifter on the decrypted EBOOT. About
    15,000 functions become C functions that work on a modelled register file and the guest's big-endian memory. The
    output is cut into 64 source files by address.
-3. **SPU lift.** The 5 SPU programs built into the game and 12 job programs that it loads from its data files are
-   translated the same way by `tools/spu/lift_spu.sh`.
+3. **SPU lift.** `tools/elf_info.py` reads the game's SPU programs out of the EBOOT: 5 embedded SPU ELFs and 12
+   SPURS job programs listed in a job table in its data. `tools/spu/lift_spu.sh` translates them the same way.
 4. **Build.** `tools/build-tlp.sh` compiles the lifted C, the port's glue and the patched runtime into one Windows
    x64 exe with a MinGW-w64 cross toolchain from the Nix flake.
 5. **Run.** The exe reads the game's data from your disc folder at run time. Compressed and encrypted game data files
@@ -63,3 +63,26 @@ translates on Linux.
 
 [FEATURES.md](FEATURES.md) lists what works today and [KNOWN_ISSUES.md](KNOWN_ISSUES.md) what does not. The port has
 been run only under Proton on Linux.
+
+## For maintainers
+
+[CODE-MAP.md](CODE-MAP.md) has diagrams of the layers, the build pipeline, the run-time data flow and the boot order
+in `port/tlp/main.cpp`, plus tables of entry points and tests.
+
+The patch files in `port/patches/` are numbered by area. They are applied in file order:
+
+| Block | Area |
+|---|---|
+| 0xxx | bring-up: loader, lwcond layout, VFS miss hook |
+| 10xx, 11xx | SPU and SPURS runtime |
+| 2xxx | RSX, GCM and Direct3D 12 |
+| 3xxx | PPU lifter and PPU runtime |
+| 4xxx | input (SDL controller, DualShock 3) |
+| 5xxx | data and media (EDAT cache, trophy store, fonts) |
+| 7xxx | later fixes of mixed areas |
+| 93xx | backports of upstream ps3recomp pull requests that the pinned commit does not have yet |
+| 99xx | follow-up to a backport |
+
+The pin is the commit shown by `git submodule status` for `third_party/ps3recomp`: `0fe7dbf5`. Upstream has merged
+this project's pull requests 674, 675 and 676 (in v0.19.0, 2026-11-06) and 783 (frame timing, 2026-11-21). The pin is
+older than those releases, so the patch set still carries the changes.

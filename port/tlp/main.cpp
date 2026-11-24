@@ -1,10 +1,30 @@
-/* Toro Lets Party port: adapted from an earlier PS3 port by the same author (names swapped, parts specific to that
- * game removed). */
-/* Toro Lets Party port host. From KZ3 78bf574 port/kz3/main.cpp (KZ3 is the author's unreleased earlier port, itself
- * based on ps3recomp templates/project, MIT licence: third_party/ps3recomp/LICENSE), cut to the game-independent
- * boot: KZ3's keyboard page bridge, notice window, keycap prompts (patch 2039, not carried over), PSARC VFS, KZ3 HLE
- * glue and the file logger are left out; KZ3_* switches are TLP_* here. tlp_log.h is a stdio stand-in for the
- * logger. */
+/*
+ * Toro Lets Party port host: the program's main(). Adapted from an earlier PS3 port's host (credits: NOTICE.md), itself
+ * based on the ps3recomp templates/project (MIT licence: third_party/ps3recomp/LICENSE), cut down to the
+ * game-independent boot. tlp_log.h is a stdio stand-in for a file logger.
+ *
+ * Boot order (main(), nothing runs before it except static initialisers):
+ *   1. argument check (argv[1] = the decrypted EBOOT.elf), timeBeginPeriod(1), unbuffered stdout
+ *   2. runtime defaults for the PS3_* / RSX_* / GCM_* switches (an explicit environment setting wins)
+ *   3. alloc_guest_vm()            reserve the guest address space; vm_commit_veh commits pages on first touch
+ *   4. ppu_load_elf(argv[1])       map the EBOOT into guest memory, returns the entry OPD
+ *   5. ppu_hle_inject_base         where the runtime's GCM window sits (TLP_INJECT_BASE overrides)
+ *   6. derive_vfs_root()           the disc folder that the PS3 mount points map to
+ *   7. EDAT cache directory        edat_set_cache_dir(<working folder>/cache/edat) unless PS3_EDAT_CACHE is set
+ *   8. ppu_recomp_register()       lifted function table into the address map
+ *      ps3_load_prx_modules()      the game's lifted system PRX, if any
+ *      ppu_hle_init()              firmware import NID -> HLE handler
+ *      ppu_sysprx_register()       boot-critical CRT
+ *      ppu_fs_register()           cellFs over the disc folder
+ *      lv2_init_syscalls()         the lv2 syscall table
+ *      tlp_hle_register()          imports the runtime leaves unresolved (hle_tlp.cpp)
+ *      cellSaveData_register_ctx_handlers(), cellGame_init_from_paramsfo()  save handlers and the title id
+ *   9. g_ps3_guest_caller, gcm_irq_start(), frame_clock thread (opens the window through tlp_rsx_init, ticks
+ *      vblank and flip, pumps window messages), start_diagnostics() (watchdog and sampler threads)
+ *  10. ppu_run(entry, STACK_TOP)   runs the game on the main PPU thread until its entry function returns
+ *  11. tlp_log_shutdown(), exit code from sys_process_exit if the game called it
+ * The line ranges are listed in docs/CODE-MAP.md.
+ */
 /*
  * ps3recomp game project -- entry point template.
  *
@@ -303,8 +323,8 @@ static void present_guest_frame(void)
 
 /* The GCM interrupt thread. The console calls the vblank and flip handlers from an interrupt thread as soon as the
  * vblank happens. The runtime otherwise delivers them at the next HLE call any guest thread makes, which came 0-3 ms
- * after the vblank (run tlp-clock1): Toro sleeps a fixed 29.366 ms after its flip handler and has about 1.3 ms to
- * spare in its two-vblank frame, so a late handler missed the next flip. The frame clock wakes this thread on every
+ * after the vblank (run tlp-clock1). Toro's frame limiter sleeps until 29.366 ms after the last flip
+ * (cellGcmGetLastFlipTime, patch 7027) and then waits for the vblank, so a late handler can still miss the next flip. The frame clock wakes this thread on every
  * vblank; ppu_gcm_pump still serializes it with the HLE-boundary deliveries. TLP_GCM_IRQ=0 turns it off. */
 static HANDLE   s_gcm_irq_event = NULL;
 static uint32_t s_gcm_irq_stack = 0;
@@ -344,8 +364,9 @@ static DWORD WINAPI frame_clock(LPVOID)
 
     unsigned  last_flip = 0;
     /* Vblank at the console's 59.94 Hz (1001/60 ms) on the QPC clock. Toro asks for VSYNC flips
-     * (SetFlipMode 2) and paces itself with a fixed 29.366 ms sleep after its flip handler plus ~3 ms of work, so
-     * two vblanks (33.37 ms) hold one frame with ~1.3 ms to spare. A 16 ms tick from GetTickCount64 made two ticks
+     * (SetFlipMode 2) and its limiter sleeps until 29.366 ms after the last flip, then waits for a vblank, so two
+     * vblanks (33.37 ms) hold one frame. (Before patch 7027 the flip stamp was on another clock and the limiter slept
+     * its whole period after its work, leaving ~1.3 ms of slack.) A 16 ms tick from GetTickCount64 made two ticks
      * 32 ms, shorter than the game's frame, and every frame took three (about 20 fps). */
     LARGE_INTEGER qf, qn;
     QueryPerformanceFrequency(&qf);

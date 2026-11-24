@@ -27,9 +27,9 @@ README = """# Title
 
 **Status: partly playable.** No release yet: the port is built from source. See [docs/STATUS.md](docs/STATUS.md).
 
-## Getting started
+## Download and play
 
-There is no release, installer or download yet. Build it yourself.
+v0.1.0 is a source preview. Build it yourself.
 
 What each must contain and where it goes: [docs/GETTING-FILES.md](docs/GETTING-FILES.md). This project ships none.
 

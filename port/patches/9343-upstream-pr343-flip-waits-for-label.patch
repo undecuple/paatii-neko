@@ -1,9 +1,12 @@
 Credit: ps3recomp PR #343 by @Kurtisone (MIT), "cellGcm: a flip queued in the command stream waits for its label and completes when the RSX reaches it", https://github.com/sp00nznet/ps3recomp/pull/343.
+
+Refreshed 2026-11-11 to apply after Toro patch 7027 (the completion stamps sit in the two functions this changes).
+
 diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
-index 97026950..0c93fa51 100644
+index ad1decf..c67c465 100644
 --- a/libs/video/cellGcmSys.c
 +++ b/libs/video/cellGcmSys.c
-@@ -109,6 +109,24 @@ static u32 s_current_display_buffer_id = 0;
+@@ -110,6 +110,24 @@ static u32 s_current_display_buffer_id = 0;
  static volatile int s_flip_pending = 0;
  /* A flip _cellGcmSetFlipCommand queued in the FIFO: | bufferId, bit 8 = ours. */
  #define GCM_FLIP_MARKER 0xFEAD0100u
@@ -28,10 +31,11 @@ index 97026950..0c93fa51 100644
  /* ponytail: fixed headroom, far above one frame's commands (Simpsons ~10 KB);
   * derive it from the observed per-frame volume if a title outgrows it. */
  #define GCM_FLIP_WRAP_BYTES 0x40000u
-@@ -730,7 +748,13 @@ void cellGcm_request_tick(void)
+@@ -735,8 +753,18 @@ void cellGcm_request_tick(void)
            GCM_PENDING_SET(s_fifo_getoff == put ? 3 : 1);
            return;
        } }
+-    s_last_flip_time = ps3_system_time_us();   /* the vblank that shows it */
 -    GCM_PENDING_SET(3);
 +    /* A flip queued in the command stream completes when the drain reaches
 +     * its marker, as on the RSX; until then this beat is a vblank only.
@@ -39,22 +43,27 @@ index 97026950..0c93fa51 100644
 +     * it had not reached, and the title rebuilt command segments the walker
 +     * was still waiting to execute. Flips that never went through the stream
 +     * are unaffected. */
-+    GCM_PENDING_SET(gcm_flip_executed_take() ? 3 : 1);
++    if (gcm_flip_executed_take()) {
++        s_last_flip_time = ps3_system_time_us();   /* the vblank that shows it */
++        GCM_PENDING_SET(3);
++    } else {
++        GCM_PENDING_SET(1);
++    }
  }
  
  /* Deliver pending handlers on the calling host thread. Serialize the entire
-@@ -792,7 +816,9 @@ void cellGcmTickVBlank(void) { s_vblank_count++; GCM_PENDING_SET(1); }
+@@ -798,7 +826,9 @@ void cellGcmTickVBlank(void) { s_vblank_count++; GCM_PENDING_SET(1); }
   * the callback IS the flip interrupt -- no flip, no callback. */
  void cellGcmTickFlip(void)
  {
--    if (s_flip_status == CELL_GCM_FLIP_STATUS_WAITING)
+-    if (s_flip_status == CELL_GCM_FLIP_STATUS_WAITING) {
 +    /* Same rule as cellGcm_request_tick: a flip still ahead of the drain has
 +     * not happened yet. */
-+    if (s_flip_status == CELL_GCM_FLIP_STATUS_WAITING && gcm_flip_executed_take())
++    if (s_flip_status == CELL_GCM_FLIP_STATUS_WAITING && gcm_flip_executed_take()) {
+         s_last_flip_time = ps3_system_time_us();   /* the vblank that shows it */
          GCM_PENDING_SET(2);
- }
- 
-@@ -1727,6 +1753,10 @@ static void gcm_fifo_resync_why(const char* why, u32* getoff, u32 put)
+     }
+@@ -1736,6 +1766,10 @@ static void gcm_fifo_resync_why(const char* why, u32* getoff, u32 put)
          for (u32 io = from; io + 8 <= land; io += 4) {
              u32 ea = gcm_io2ea(io); if (!ea) continue;
              u32 w = vm_read32(ea);
@@ -65,7 +74,7 @@ index 97026950..0c93fa51 100644
              if ((w >> 29) != 0 || (w & 0x1FFCu) != 0x0050u) continue;
              u32 dea = gcm_io2ea(io + 4); if (!dea) continue;
              gcm_ref_push_at(vm_read32(dea), io);
-@@ -2421,6 +2451,10 @@ static void gcm_rsx_process_fifo_unlocked(void)
+@@ -2455,6 +2489,10 @@ static void gcm_rsx_process_fifo_unlocked(void)
                              s_fifo_getoff, put);
              }
              s_fifo_getoff = put;
@@ -76,7 +85,7 @@ index 97026950..0c93fa51 100644
              why = "no-io-mapping";
              break;
          }
-@@ -2460,6 +2494,9 @@ static void gcm_rsx_process_fifo_unlocked(void)
+@@ -2494,6 +2532,9 @@ static void gcm_rsx_process_fifo_unlocked(void)
                  gcm_set_current_display_buffer(w & 7u);
                  s_flip_pending = 1;
                  s_flip_request_count++;
@@ -86,7 +95,7 @@ index 97026950..0c93fa51 100644
              } else {
                  cellGcmSetFlipCommand(w & 0xFFu);
              }
-@@ -3346,6 +3383,7 @@ static int gcm_flip_into_fifo(u32 ctx, u32 bufferId)
+@@ -3385,6 +3426,7 @@ static int gcm_flip_into_fifo(u32 ctx, u32 bufferId)
       * ring wraps, and the recycle above keys on them. */
      if (cur + 8 + GCM_RECYCLE_SLACK > end || gcm_ea2io(cur) == 0xFFFFFFFFu) return 0;
      vm_write32(cur, GCM_FLIP_MARKER | bufferId);
@@ -94,7 +103,7 @@ index 97026950..0c93fa51 100644
      /* Wrap here, on the guest thread, once the ring is nearly used -- what the
       * SDK's buffer-full callback does. Otherwise the drain thread recycles it
       * (see "recycled the title's own ring"), rewriting ctx->current and put
-@@ -4263,10 +4301,32 @@ s32 _cellGcmSetFlipCommand(void* ctx, u32 bufferId)
+@@ -4332,10 +4374,32 @@ s32 _cellGcmSetFlipCommand(void* ctx, u32 bufferId)
  }
  
  /* NID: 0xD8F88E1A */
@@ -128,9 +137,9 @@ index 97026950..0c93fa51 100644
      return cellGcmSetFlipCommandWithWaitLabel(bufferId, labelIndex, labelValue);
  }
  
-diff --git a/cur/libs/video/tests/test_gcm_flip_stream.c b/libs/video/tests/test_gcm_flip_stream.c
+diff --git a/libs/video/tests/test_gcm_flip_stream.c b/libs/video/tests/test_gcm_flip_stream.c
 new file mode 100644
-index 00000000..c79e708f
+index 0000000..c79e708
 --- /dev/null
 +++ b/libs/video/tests/test_gcm_flip_stream.c
 @@ -0,0 +1,182 @@
@@ -316,9 +325,9 @@ index 00000000..c79e708f
 +    free(vm_base);
 +    return fails ? 1 : 0;
 +}
-diff --git a/cur/tools/test_gcm_flip_stream.py b/tools/test_gcm_flip_stream.py
+diff --git a/tools/test_gcm_flip_stream.py b/tools/test_gcm_flip_stream.py
 new file mode 100644
-index 00000000..2df0db3b
+index 0000000..2df0db3
 --- /dev/null
 +++ b/tools/test_gcm_flip_stream.py
 @@ -0,0 +1,27 @@

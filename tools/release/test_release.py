@@ -8,6 +8,7 @@ import json
 import os
 import pathlib
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -46,6 +47,8 @@ class Release(tc.Tree):
         (self.d / "CITATION.cff").write_text(CFF)  # same repo as the card links
         (self.d / ".recomp.json").write_text(json.dumps(self.card))
         self.sfo_args = ["--sfo", str(self.sfo)]
+        (self.d / "docs").mkdir(exist_ok=True)
+        (self.d / "docs/KNOWN_ISSUES.md").write_text("# Known issues\n")
 
     def rel(self, *a):
         return run(release.main, "--root", str(self.d), "--date", "2026-11-01", *self.sfo_args, *a)
@@ -57,6 +60,40 @@ class Release(tc.Tree):
         self.assertIn("CHANGELOG.md does not exist", err)
         self.assertEqual(snapshot(self.d), before)
         self.assertFalse((self.d / "CHANGELOG.md").exists())
+
+    def test_refuses_without_known_issues(self):
+        (self.d / "CHANGELOG.md").write_text(LOG)
+        (self.d / "docs/KNOWN_ISSUES.md").unlink()
+        before = snapshot(self.d)
+        rc, _, err = self.rel("0.2.0")
+        self.assertEqual(rc, 1)
+        self.assertIn("KNOWN_ISSUES.md", err)
+        self.assertEqual(snapshot(self.d), before)
+
+    def test_refuses_existing_tag_and_prints_tag(self):
+        (self.d / "CHANGELOG.md").write_text(LOG)
+        rc, out, _ = self.rel("0.2.0", "--dry-run")
+        self.assertEqual(rc, 0)
+        self.assertIn("expected tag: v0.2.0", out)
+        env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.com", GIT_COMMITTER_NAME="t",
+                   GIT_COMMITTER_EMAIL="t@example.com", GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull)
+        for cmd in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "x"], ["tag", "v0.2.0"]):
+            subprocess.run(["git", "-C", str(self.d), *cmd], env=env, check=True, capture_output=True)
+        before = snapshot(self.d)
+        rc, _, err = self.rel("0.2.0")
+        self.assertEqual(rc, 1)
+        self.assertIn("tag v0.2.0 already exists", err)
+        self.assertEqual({k: v for k, v in snapshot(self.d).items() if not k.startswith(".git/")},
+                         {k: v for k, v in before.items() if not k.startswith(".git/")})
+
+    def test_notes_say_what_this_is(self):
+        (self.d / "CHANGELOG.md").write_text(LOG)
+        self.assertEqual(self.rel("0.2.0")[0], 0)
+        notes = (self.d / "work/release/notes-0.2.0.md").read_text()
+        for want in ("source preview", "no binaries", "--recursive", "docs/BUILDING.md", "SHA256SUMS",
+                     "Tested only under Proton on Linux; not tested on real Windows", "0xC0000409",
+                     "docs/KNOWN_ISSUES.md", "docs/PRIVACY.md", "licenses/README.md"):
+            self.assertIn(want, notes)
 
     def test_release(self):
         (self.d / "CHANGELOG.md").write_text(LOG)

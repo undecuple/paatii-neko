@@ -51,4 +51,4 @@ PY
 "$ROOT/tools/safe_rm.sh" "$NEW"
 # Stamp the patch set this tree was made from; tools/build-tlp.sh refuses a stale tree (2026-10-09: a build run
 # directly, without tlp-check.sh's regeneration, silently left patch 3003 out of a 1.14 test).
-echo "$(cat port/patches/*.patch | sha256sum | cut -c1-16)-$(git -C third_party/ps3recomp rev-parse --short HEAD)" > "$PT/.tlp-patchset"
+echo "$(cat port/patches/*.patch | sha256sum | cut -c1-16)-$(git -C third_party/ps3recomp rev-parse --short=12 HEAD 2>/dev/null || cut -c1-12 third_party/ps3recomp/.tlp-commit 2>/dev/null || echo none)" > "$PT/.tlp-patchset"

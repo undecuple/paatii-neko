@@ -1,0 +1,176 @@
+GCM: cellGcmGetLastFlipTime is the guest system time (us, sys_time_get_system_time's clock) of the last completed flip.
+Toro's own patch (7xxx); candidate for upstream (the bug is upstream's, in v0.15.0 and v0.19.0).
+What: a shared ps3_system_time_us() (sys_timer.c) is the guest system clock; sys_time_get_system_time returns it.
+cellGcmSys stamps s_last_flip_time with it where a flip completes (the vblank ticker paths and SetPrepareFlip),
+no longer with absolute host QPC nanoseconds at the flip request. Also corrects the NID comment on
+cellGcmGetLastFlipTime (0x63387071; 0x21AC3697 is cellGcmAddressToOffset).
+Why: the game's frame limiter func_0018F5B8 (called from the main loop at 0xB37E8) computes
+sleep = period - (sys_time_get_system_time() - cellGcmGetLastFlipTime()), usleeps that (syscall 0x8D, lr 0x18F5E8),
+then waits for its vblank semaphore (syscall 0x5C, lr 0x18F678). With unrelated clocks the limiter always slept its
+whole period (29.4 ms) and the frame was period + all the frame's work: run v019c (v0.19, PS3_FTRACE 260-280 s)
+41.4 ms per frame, the semaphore waits split between ~1-2 ms and ~16 ms (one vblank), 22.3 flips/s in the 3D scenes
+(main: 29.1). With the shared clock but the stamp still at the request (run v019d) the game paced itself at exactly
+its period, 29.38 ms p50 and 34.1 flips/s, faster than the VSYNC flips (SetFlipMode 2) the PS3 shows at 30.
+The PS3 and RPCS3 stamp the last flip on the guest system clock when the flip is shown [src:RPCS3-GCM].
+
+diff --git a/libs/video/cellGcmSys.c b/libs/video/cellGcmSys.c
+index 41b0c07..1ebc1b8 100644
+--- a/libs/video/cellGcmSys.c
++++ b/libs/video/cellGcmSys.c
+@@ -244,7 +244,10 @@ static CellGcmUserHandler    s_user_handler    = NULL;
+ static CellGcmSecondVHandler s_second_v_handler = NULL;
+ 
+ /* Flip timing */
+-static u64 s_last_flip_time = 0;
++/* Guest system time (us, sys_time_get_system_time's clock) of the last
++ * completed flip: titles pace frames as period - (system time - this). */
++static u64 s_last_flip_time = 0;   /* set where a flip completes */
++uint64_t ps3_system_time_us(void);   /* runtime/syscalls/sys_timer.c */
+ 
+ /* VBlank counter (incremented on each flip as approximation) */
+ static u32 s_vblank_count = 0;
+@@ -492,7 +495,7 @@ s32 cellGcmInit(u32 cmdSize, u32 ioSize, u32 ioAddress)
+     s_vblank_handler = NULL;
+     s_user_handler = NULL;
+     s_second_v_handler = NULL;
+-    s_last_flip_time = get_timestamp_ns();
++    s_last_flip_time = ps3_system_time_us();
+     s_flip_status = CELL_GCM_FLIP_STATUS_DONE;
+     s_flip_mode = CELL_GCM_DISPLAY_VSYNC;
+     s_debug_level = CELL_GCM_DEBUG_LEVEL0;
+@@ -728,9 +731,11 @@ void cellGcm_request_tick(void)
+       if (need < 0) { const char* e = getenv("GCM_FLIP_NEEDS_FIFO"); need = e ? atoi(e) : 0; }
+       if (need) {
+           u32 put = vm_read32(GCM_CONTROL_GUEST_ADDR + 0);
++          if (s_fifo_getoff == put) s_last_flip_time = ps3_system_time_us();
+           GCM_PENDING_SET(s_fifo_getoff == put ? 3 : 1);
+           return;
+       } }
++    s_last_flip_time = ps3_system_time_us();   /* the vblank that shows it */
+     GCM_PENDING_SET(3);
+ }
+ 
+@@ -793,8 +798,10 @@ void cellGcmTickVBlank(void) { s_vblank_count++; GCM_PENDING_SET(1); }
+  * the callback IS the flip interrupt -- no flip, no callback. */
+ void cellGcmTickFlip(void)
+ {
+-    if (s_flip_status == CELL_GCM_FLIP_STATUS_WAITING)
++    if (s_flip_status == CELL_GCM_FLIP_STATUS_WAITING) {
++        s_last_flip_time = ps3_system_time_us();   /* the vblank that shows it */
+         GCM_PENDING_SET(2);
++    }
+ }
+ 
+ /* Drain the game's GCM FIFO into the RSX backend. Called from the present thread
+@@ -3285,7 +3292,8 @@ static s32 gcm_flip_request(u32 bufferId, int in_fifo)
+     /* Flip requested but not yet shown: a subsequent cellGcmSetWaitFlip blocks
+      * until the present thread's cellGcmTickFlip marks it done (vsync). */
+     s_flip_status = CELL_GCM_FLIP_STATUS_WAITING;
+-    s_last_flip_time = get_timestamp_ns();
++    /* cellGcmGetLastFlipTime is stamped where the flip completes (the vblank
++     * that shows it: cellGcm_request_tick and cellGcmTickFlip), not here. */
+ 
+     /* Invoke via OPD resolution, not a raw call into guest code.
+      *
+@@ -3404,7 +3412,7 @@ s32 cellGcmSetPrepareFlip(void* ctx, u32 bufferId)
+     gcm_set_current_display_buffer(bufferId);
+     s_flip_status = CELL_GCM_FLIP_STATUS_DONE;
+     s_flip_request_count++;
+-    s_last_flip_time = get_timestamp_ns();
++    s_last_flip_time = ps3_system_time_us();
+ 
+     /* Invoke the guest flip handler via OPD resolution -- s_flip_handler holds
+      * the raw guest OPD (e.g. 0x530D70); calling it as a host function pointer
+@@ -3470,7 +3478,7 @@ void cellGcmSetUserHandler(CellGcmUserHandler handler)
+     gcm_update_handler_mask();
+ }
+ 
+-/* NID: 0x21AC3697 */
++/* NID: 0x63387071 (0x21AC3697 is cellGcmAddressToOffset) */
+ u64 cellGcmGetLastFlipTime(void)
+ {
+     return s_last_flip_time;
+diff --git a/runtime/ppu/ppu_sysprx.cpp b/runtime/ppu/ppu_sysprx.cpp
+index 653897a..3fe684e 100644
+--- a/runtime/ppu/ppu_sysprx.cpp
++++ b/runtime/ppu/ppu_sysprx.cpp
+@@ -23,6 +23,7 @@
+ #include "../memory/vm.h"   /* VM_HLE_INJECT_BASE -- not platform-specific */
+ 
+ extern "C" uint8_t* vm_base;
++extern "C" uint64_t ps3_system_time_us(void);   /* sys_timer.c */
+ extern "C" void ps3_hle_register_ctx(uint32_t nid, const char* name, void (*fn)(ppu_context*));
+ extern "C" uint32_t vm_read32(uint64_t a);
+ extern "C" uint64_t vm_read64(uint64_t a);
+@@ -62,17 +63,11 @@ static void sys_initialize_tls(ppu_context* ctx)
+  * lands here) paced the intro at ~1/10th speed: video decoded at <1 fps,
+  * the audio preload threshold took forever to fill (movie stayed silent),
+  * and every frontend animation timed off it crawled. */
++/* The clock is ps3_system_time_us (sys_timer.c), shared with
++ * cellGcmGetLastFlipTime. */
+ static void sys_time_get_system_time(ppu_context* ctx)
+ {
+-#ifdef _WIN32
+-    static LARGE_INTEGER s_freq, s_base;
+-    if (!s_freq.QuadPart) { QueryPerformanceFrequency(&s_freq); QueryPerformanceCounter(&s_base); }
+-    LARGE_INTEGER now; QueryPerformanceCounter(&now);
+-    ctx->gpr[3] = (uint64_t)((now.QuadPart - s_base.QuadPart) * 1000000ull / (uint64_t)s_freq.QuadPart);
+-#else
+-    struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+-    ctx->gpr[3] = (uint64_t)ts.tv_sec * 1000000ull + (uint64_t)ts.tv_nsec / 1000ull;
+-#endif
++    ctx->gpr[3] = ps3_system_time_us();
+ }
+ 
+ /* sys_process_is_stack(u32 addr) -> 1 if addr is in the stack region. We model
+diff --git a/runtime/syscalls/sys_timer.c b/runtime/syscalls/sys_timer.c
+index 2308bfa..06d5cea 100644
+--- a/runtime/syscalls/sys_timer.c
++++ b/runtime/syscalls/sys_timer.c
+@@ -77,6 +77,30 @@ uint64_t ppu_timebase_now(void)
+ #endif
+ }
+ 
++/* Microseconds of guest system time (sys_time_get_system_time). On Windows
++ * it counts from the first read, elsewhere it is the host monotonic clock.
++ * cellGcmGetLastFlipTime stamps flips with it too: titles pace frames as
++ * period - (system time - last flip time), so the two must share clock and
++ * unit (the flip stamp used to be absolute QPC nanoseconds, which made that
++ * difference meaningless and every such limiter sleep its whole period). */
++uint64_t ps3_system_time_us(void)
++{
++#ifdef _WIN32
++    static LONGLONG t0 = 0;
++    ensure_qpc_init();
++    LARGE_INTEGER now;
++    QueryPerformanceCounter(&now);
++    if (!t0) t0 = now.QuadPart;   /* benign race: same anchor either way */
++    uint64_t d = (uint64_t)(now.QuadPart - t0);
++    uint64_t q = (uint64_t)s_qpc_freq.QuadPart;
++    return (d / q) * 1000000ull + (d % q) * 1000000ull / q;
++#else
++    struct timespec ts;
++    clock_gettime(CLOCK_MONOTONIC, &ts);
++    return (uint64_t)ts.tv_sec * 1000000ull + (uint64_t)ts.tv_nsec / 1000ull;
++#endif
++}
++
+ static void write_be32(uint32_t addr, uint32_t val)
+ {
+     uint32_t* p = (uint32_t*)vm_to_host(addr);
+diff --git a/runtime/syscalls/sys_timer.h b/runtime/syscalls/sys_timer.h
+index 8b4a019..d276b1c 100644
+--- a/runtime/syscalls/sys_timer.h
++++ b/runtime/syscalls/sys_timer.h
+@@ -32,6 +32,11 @@ extern "C" {
+  * to the PS3 timebase. Called from every lifted mftb site (ppu_lifter.py). */
+ uint64_t ppu_timebase_now(void);
+ 
++/* The guest's system time in microseconds: what sys_time_get_system_time
++ * returns. Every guest-visible time stamp that a title subtracts from it
++ * (cellGcmGetLastFlipTime) must come from this same clock. */
++uint64_t ps3_system_time_us(void);
++
+ #ifdef _WIN32
+ /* Sub-millisecond timed-wait support for the lv2 sync primitives.
+  * SleepConditionVariableCS / WaitForSingleObject floor a timed wait to 1 ms,
