@@ -1,6 +1,9 @@
 <p align="center">
-  <img src="docs/assets/banner.png" srcset="docs/assets/banner@2x.png 2x" width="1280"
-       alt="パーティー猫！ Paatii Neko! Toro! Let's Party! (PS3), unofficial PC port. Balloons and confetti">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/banner.png, docs/assets/banner@2x.png 2x">
+    <img src="docs/assets/banner.svg" width="1280"
+         alt="パーティー猫！ Paatii Neko! Toro! Let's Party! (PS3), unofficial PC port. Balloons and confetti">
+  </picture>
 </p>
 
 <h1 align="center">パーティー猫！ (Paatii Neko!)</h1>
