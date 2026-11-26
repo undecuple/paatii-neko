@@ -1,6 +1,6 @@
 {
  "format": 1,
- "generator_sha256": "04e8d1c12a56116f8aec3a7d54570d0960f5544160b52d5223d5b4b6fa496b78",
+ "generator_sha256": "52ab48f7e3ce4ef78485f8728319ace38c9d88e31932413be43b4bc31753267e",
  "fonts_sha256": {
   "Baloo2[wght].ttf": "d47a6852548059b1db49a1319d06d499d546c3fa2237cf9eee9c43c8abb025c2",
   "LilitaOne-Regular.ttf": "f5b641c45c69d772ee4eda687bc9fda411d5cad6b0b45371491da4580cbc8d59",
@@ -17,6 +17,14 @@
    ],
    "bytes": 189205,
    "sha256": "f1e89c500dd1eb1e3229fee26699f7b424619e9b714e4e4dd994f280d8786b8a"
+  },
+  "banner.svg": {
+   "size": [
+    1280,
+    320
+   ],
+   "bytes": 59623,
+   "sha256": "4c75e5b1a48381f57947bdc8e1b3d13037591e4f5fc3bf622bd18d348e41ae47"
   },
   "banner@2x.png": {
    "size": [
